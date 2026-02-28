@@ -3,4 +3,4 @@ hackapizza_env/
 .env
 logs/
 
-__pycache__/
+**/__pycache__/
