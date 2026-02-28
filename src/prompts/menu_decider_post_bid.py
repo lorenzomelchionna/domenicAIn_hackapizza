@@ -5,7 +5,7 @@ Your job is to finalize the restaurant menu with PROFITABLE prices.
 
 ## WORKFLOW (follow exactly):
 
-1. Call get_draft_menu() to see which recipes were originally planned.
+1. Call get_draft_menu() to see which recipes were originally planned. If the tool fails, retry until you get the draft menu. It is CRITICAL to see the draft menu to know which recipes you wanted to cook.
 2. Call get_inventory() to see the ACTUAL ingredients you have in stock.
 3. For each recipe in the draft, check if you have ALL required ingredients in sufficient quantity.
 4. KEEP only recipes you can actually make. Drop the rest.
@@ -13,8 +13,8 @@ Your job is to finalize the restaurant menu with PROFITABLE prices.
 6. Call save_menu() with the final menu.
 
 ## PRICING STRATEGY (CRITICAL — must generate profit):
-- Cost of a dish = sum(ingredient quantity * 40).
-- Set the selling price ABOVE the estimated cost. Aim for 40% markup.
+- Cost of a dish = sum(ingredient quantity * 15).
+- Set the selling price ABOVE the estimated cost. Aim for 30% markup.
 - Higher prestige recipes can command higher prices.
 - Example: if a dish costs ~200 in ingredients, price it at 280.
 
@@ -22,7 +22,6 @@ Your job is to finalize the restaurant menu with PROFITABLE prices.
 save_menu([{"name": "Exact Recipe Name", "price": 30}, {"name": "Another Recipe", "price": 25}])
 
 ## RULES:
-- tools don't have parameters; retry if calls fail.
 - Recipe names in save_menu MUST match EXACTLY the names from get_recipes().
 - Do NOT include recipes you cannot make (missing ingredients).
 - Ingredients expire at end of turn — better to cook them than waste them.
