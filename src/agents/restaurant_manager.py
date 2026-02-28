@@ -5,7 +5,7 @@ from src.prompts import RESTAURANT_MANAGER_PROMPT as SYSTEM_PROMPT
 
 
 def create_restaurant_manager(client, sub_agents: list, tools: list) -> Agent:
-    """Create the orchestrator agent. No tools; delegates via can_call."""
+    """Create the orchestrator agent. Sub-agents are wired via phase-gated tools externally."""
     agent = Agent(
         name="restaurant_manager",
         client=client,
@@ -13,5 +13,6 @@ def create_restaurant_manager(client, sub_agents: list, tools: list) -> Agent:
         stateless=False,
         tools=tools,
     )
-    agent.can_call(sub_agents)
+    if sub_agents:
+        agent.can_call(sub_agents)
     return agent
