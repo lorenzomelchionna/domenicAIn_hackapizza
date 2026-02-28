@@ -1,0 +1,13 @@
+[project]
+name = "hackapizza-agent"
+version = "0.1.0"
+description = "Hackapizza 2.0 multi-agent restaurant system"
+requires-python = ">=3.11"
+dependencies = [
+    "datapizza-ai",
+    "datapizza-ai-clients-openai-like",
+    "aiohttp",
+    "python-dotenv",
+    "requests",
+]
+

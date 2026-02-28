@@ -1,1 +1,5 @@
 datapizza-ai
+datapizza-ai-clients-openai-like
+aiohttp
+python-dotenv
+requests

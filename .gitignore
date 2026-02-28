@@ -1,2 +1,3 @@
 hackapizza_env/
+.venv/
 .env

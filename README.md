@@ -47,10 +47,23 @@ This project uses the [Datapizza AI](https://github.com/datapizza-labs/datapizza
 
 ```
 domenicAIn_hackapizza/
-├── README.md
+├── src/
+│   ├── agents/         # Multi-agent definitions (Restaurant Manager + 6 sub-agents)
+│   ├── prompts/       # System prompts per agent
+│   ├── state/         # Game state management
+│   ├── sse/           # SSE event listener
+│   ├── tools/         # MCP tool wrappers
+│   ├── config.py
+│   └── main.py
+├── run.py             # Entry point
 ├── requirements.txt
-└── hackapizza_env/     # Virtual environment (gitignored)
+└── .env.example       # Copy to .env with TEAM_ID, TEAM_API_KEY, REGOLO_API_KEY
 ```
+
+### Running the multi-agent system
+
+1. Copy `.env.example` to `.env` and set `TEAM_ID`, `TEAM_API_KEY`, `REGOLO_API_KEY`
+2. Run: `python run.py` (from repo root)
 
 ## Git Flow
 
