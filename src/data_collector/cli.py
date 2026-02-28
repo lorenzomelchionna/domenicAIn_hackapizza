@@ -7,11 +7,13 @@ from pathlib import Path
 
 from .db import get_connection, init_db
 from .queries import (
+    DEFAULT_WINDOW_SIZE,
     get_all_turns,
     get_avg_bid_by_ingredient,
     get_competitor_performance,
     get_dish_popularity,
     get_ingredient_market_prices,
+    get_recent_turns_with_bids,
     get_turn_summary,
     get_winning_bid_stats,
 )
@@ -103,9 +105,16 @@ def cmd_bids(args: argparse.Namespace) -> None:
         print(f"Database not found: {db_path}")
         sys.exit(1)
 
+    window = args.window
+    recent_turns = get_recent_turns_with_bids(db_path, window)
+    if recent_turns:
+        print(f"\n[Sliding window: last {window} turns - {recent_turns}]")
+    
+    print("\n(Note: API returns only winning bids, no data on lost bids)")
+    
     if args.winning:
-        stats = get_winning_bid_stats(db_path)
-        print(f"\n{'Ingredient':<25} {'Avg Win':<10} {'Min':<8} {'Max':<8} {'Count':<8}")
+        stats = get_winning_bid_stats(db_path, window)
+        print(f"\n{'Ingredient':<25} {'Avg Bid':<10} {'Min':<8} {'Max':<8} {'Count':<8}")
         print("-" * 60)
         for row in stats:
             print(
@@ -116,8 +125,8 @@ def cmd_bids(args: argparse.Namespace) -> None:
                 f"{row['winning_bids']:<8}"
             )
     else:
-        stats = get_avg_bid_by_ingredient(db_path)
-        print(f"\n{'Ingredient':<25} {'Avg Bid':<10} {'Min':<8} {'Max':<8} {'Total':<8} {'Win %':<8}")
+        stats = get_avg_bid_by_ingredient(db_path, window)
+        print(f"\n{'Ingredient':<25} {'Avg Bid':<10} {'Min':<8} {'Max':<8} {'Bids':<8} {'Qty':<8}")
         print("-" * 70)
         for row in stats:
             print(
@@ -126,7 +135,7 @@ def cmd_bids(args: argparse.Namespace) -> None:
                 f"{row['min_bid']:<8} "
                 f"{row['max_bid']:<8} "
                 f"{row['total_bids']:<8} "
-                f"{row['win_rate']:<8}"
+                f"{row['total_quantity']:<8}"
             )
     print()
 
@@ -138,7 +147,10 @@ def cmd_dishes(args: argparse.Namespace) -> None:
         print(f"Database not found: {db_path}")
         sys.exit(1)
 
-    stats = get_dish_popularity(db_path)
+    window = args.window
+    print(f"\n[Sliding window: last {window} turns]")
+    
+    stats = get_dish_popularity(db_path, window)
     if not stats:
         print("No dish data collected yet.")
         return
@@ -163,7 +175,10 @@ def cmd_market(args: argparse.Namespace) -> None:
         print(f"Database not found: {db_path}")
         sys.exit(1)
 
-    stats = get_ingredient_market_prices(db_path)
+    window = args.window
+    print(f"\n[Sliding window: last {window} turns]")
+    
+    stats = get_ingredient_market_prices(db_path, window)
     if not stats:
         print("No market data collected yet.")
         return
@@ -287,12 +302,18 @@ def main() -> None:
     # bids
     bids_parser = subparsers.add_parser("bids", help="Show bid statistics by ingredient")
     bids_parser.add_argument("--winning", action="store_true", help="Show only winning bid stats")
+    bids_parser.add_argument("-w", "--window", type=int, default=DEFAULT_WINDOW_SIZE, 
+                            help=f"Sliding window size (last N turns, default: {DEFAULT_WINDOW_SIZE})")
 
     # dishes
-    subparsers.add_parser("dishes", help="Show dish popularity statistics")
+    dishes_parser = subparsers.add_parser("dishes", help="Show dish popularity statistics")
+    dishes_parser.add_argument("-w", "--window", type=int, default=DEFAULT_WINDOW_SIZE,
+                              help=f"Sliding window size (last N turns, default: {DEFAULT_WINDOW_SIZE})")
 
     # market
-    subparsers.add_parser("market", help="Show market price statistics")
+    market_parser = subparsers.add_parser("market", help="Show market price statistics")
+    market_parser.add_argument("-w", "--window", type=int, default=DEFAULT_WINDOW_SIZE,
+                              help=f"Sliding window size (last N turns, default: {DEFAULT_WINDOW_SIZE})")
 
     # competitors
     subparsers.add_parser("competitors", help="Show competitor performance")

@@ -1,45 +1,92 @@
-"""Query functions for Market Intelligence analysis."""
+"""Query functions for Market Intelligence analysis with sliding window support."""
 from pathlib import Path
 from typing import Any
 
 from .db import get_connection
 
+DEFAULT_WINDOW_SIZE = 2
 
-def get_avg_bid_by_ingredient(db_path: str | Path) -> list[dict[str, Any]]:
-    """Get average bid amount per ingredient across all turns.
+
+def _get_recent_turns(conn, window_size: int = DEFAULT_WINDOW_SIZE) -> list[int]:
+    """Get the most recent N turn IDs with bid_history data."""
+    cursor = conn.execute(
+        """
+        SELECT DISTINCT turn_id FROM bid_history
+        ORDER BY turn_id DESC
+        LIMIT ?
+        """,
+        (window_size,),
+    )
+    return [row["turn_id"] for row in cursor.fetchall()]
+
+
+def _get_recent_turns_any(conn, window_size: int = DEFAULT_WINDOW_SIZE) -> list[int]:
+    """Get the most recent N turn IDs from any table."""
+    cursor = conn.execute(
+        """
+        SELECT DISTINCT turn_id FROM (
+            SELECT turn_id FROM bid_history
+            UNION SELECT turn_id FROM meals
+            UNION SELECT turn_id FROM market_entries
+            UNION SELECT turn_id FROM restaurant_snapshots
+            UNION SELECT turn_id FROM sse_events WHERE turn_id IS NOT NULL
+        ) ORDER BY turn_id DESC
+        LIMIT ?
+        """,
+        (window_size,),
+    )
+    return [row["turn_id"] for row in cursor.fetchall()]
+
+
+def get_avg_bid_by_ingredient(db_path: str | Path, window_size: int = DEFAULT_WINDOW_SIZE) -> list[dict[str, Any]]:
+    """Get average bid amount per ingredient for the last N turns.
     
-    Returns list of dicts with: ingredient, avg_bid, min_bid, max_bid, total_bids, win_rate
+    NOTE: bid_history API only returns winning bids, so all records are won=1.
+    
+    Returns list of dicts with: ingredient, avg_bid, min_bid, max_bid, total_bids, total_quantity
     """
     conn = get_connection(db_path)
     try:
+        recent_turns = _get_recent_turns(conn, window_size)
+        if not recent_turns:
+            return []
+        
+        placeholders = ",".join("?" * len(recent_turns))
         cursor = conn.execute(
-            """
+            f"""
             SELECT 
                 ingredient,
                 ROUND(AVG(bid_amount), 2) as avg_bid,
                 MIN(bid_amount) as min_bid,
                 MAX(bid_amount) as max_bid,
                 COUNT(*) as total_bids,
-                ROUND(AVG(CASE WHEN won = 1 THEN 1.0 ELSE 0.0 END) * 100, 1) as win_rate
+                SUM(quantity) as total_quantity
             FROM bid_history
+            WHERE turn_id IN ({placeholders})
             GROUP BY ingredient
             ORDER BY avg_bid DESC
-            """
+            """,
+            recent_turns,
         )
         return [dict(row) for row in cursor.fetchall()]
     finally:
         conn.close()
 
 
-def get_winning_bid_stats(db_path: str | Path) -> list[dict[str, Any]]:
-    """Get statistics on winning bids per ingredient.
+def get_winning_bid_stats(db_path: str | Path, window_size: int = DEFAULT_WINDOW_SIZE) -> list[dict[str, Any]]:
+    """Get statistics on winning bids per ingredient for the last N turns.
     
     Returns list of dicts with: ingredient, avg_winning_bid, min_winning_bid, max_winning_bid
     """
     conn = get_connection(db_path)
     try:
+        recent_turns = _get_recent_turns(conn, window_size)
+        if not recent_turns:
+            return []
+        
+        placeholders = ",".join("?" * len(recent_turns))
         cursor = conn.execute(
-            """
+            f"""
             SELECT 
                 ingredient,
                 ROUND(AVG(bid_amount), 2) as avg_winning_bid,
@@ -47,37 +94,49 @@ def get_winning_bid_stats(db_path: str | Path) -> list[dict[str, Any]]:
                 MAX(bid_amount) as max_winning_bid,
                 COUNT(*) as winning_bids
             FROM bid_history
-            WHERE won = 1
+            WHERE won = 1 AND turn_id IN ({placeholders})
             GROUP BY ingredient
             ORDER BY avg_winning_bid DESC
-            """
+            """,
+            recent_turns,
         )
         return [dict(row) for row in cursor.fetchall()]
     finally:
         conn.close()
 
 
-def get_competitor_bid_patterns(db_path: str | Path, exclude_restaurant_id: int | None = None) -> list[dict[str, Any]]:
-    """Get bidding patterns of competitors.
+def get_competitor_bid_patterns(db_path: str | Path, exclude_restaurant_id: int | None = None, window_size: int = DEFAULT_WINDOW_SIZE) -> list[dict[str, Any]]:
+    """Get bidding patterns of competitors for the last N turns.
     
-    Returns list of dicts with: restaurant_id, avg_bid, total_bids, win_rate, total_spent
+    NOTE: bid_history API only returns winning bids, so total_spent = all bids (all are won).
+    
+    Returns list of dicts with: restaurant_id, avg_bid, total_bids, total_quantity, total_spent
     """
     conn = get_connection(db_path)
     try:
-        query = """
+        recent_turns = _get_recent_turns(conn, window_size)
+        if not recent_turns:
+            return []
+        
+        placeholders = ",".join("?" * len(recent_turns))
+        params: list = list(recent_turns)
+        
+        query = f"""
             SELECT 
                 restaurant_id,
                 ROUND(AVG(bid_amount), 2) as avg_bid,
                 COUNT(*) as total_bids,
-                ROUND(AVG(CASE WHEN won = 1 THEN 1.0 ELSE 0.0 END) * 100, 1) as win_rate,
-                SUM(CASE WHEN won = 1 THEN bid_amount * quantity ELSE 0 END) as total_spent
+                SUM(quantity) as total_quantity,
+                ROUND(SUM(bid_amount * quantity), 2) as total_spent
             FROM bid_history
+            WHERE turn_id IN ({placeholders})
         """
-        params: tuple = ()
+        
         if exclude_restaurant_id is not None:
-            query += " WHERE restaurant_id != ?"
-            params = (exclude_restaurant_id,)
-        query += " GROUP BY restaurant_id ORDER BY win_rate DESC"
+            query += " AND restaurant_id != ?"
+            params.append(exclude_restaurant_id)
+        
+        query += " GROUP BY restaurant_id ORDER BY total_spent DESC"
         
         cursor = conn.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]
@@ -85,15 +144,20 @@ def get_competitor_bid_patterns(db_path: str | Path, exclude_restaurant_id: int 
         conn.close()
 
 
-def get_ingredient_market_prices(db_path: str | Path) -> list[dict[str, Any]]:
-    """Get market price statistics per ingredient.
+def get_ingredient_market_prices(db_path: str | Path, window_size: int = DEFAULT_WINDOW_SIZE) -> list[dict[str, Any]]:
+    """Get market price statistics per ingredient for the last N turns.
     
     Returns list of dicts with: ingredient_name, avg_price, min_price, max_price, buy_count, sell_count
     """
     conn = get_connection(db_path)
     try:
+        recent_turns = _get_recent_turns_any(conn, window_size)
+        if not recent_turns:
+            return []
+        
+        placeholders = ",".join("?" * len(recent_turns))
         cursor = conn.execute(
-            """
+            f"""
             SELECT 
                 ingredient_name,
                 ROUND(AVG(price), 2) as avg_price,
@@ -102,24 +166,31 @@ def get_ingredient_market_prices(db_path: str | Path) -> list[dict[str, Any]]:
                 SUM(CASE WHEN side = 'BUY' THEN 1 ELSE 0 END) as buy_count,
                 SUM(CASE WHEN side = 'SELL' THEN 1 ELSE 0 END) as sell_count
             FROM market_entries
+            WHERE turn_id IN ({placeholders})
             GROUP BY ingredient_name
             ORDER BY avg_price DESC
-            """
+            """,
+            recent_turns,
         )
         return [dict(row) for row in cursor.fetchall()]
     finally:
         conn.close()
 
 
-def get_dish_popularity(db_path: str | Path) -> list[dict[str, Any]]:
-    """Get dish popularity based on orders.
+def get_dish_popularity(db_path: str | Path, window_size: int = DEFAULT_WINDOW_SIZE) -> list[dict[str, Any]]:
+    """Get dish popularity based on orders for the last N turns.
     
     Returns list of dicts with: dish_name, order_count, avg_price, executed_count, success_rate
     """
     conn = get_connection(db_path)
     try:
+        recent_turns = _get_recent_turns_any(conn, window_size)
+        if not recent_turns:
+            return []
+        
+        placeholders = ",".join("?" * len(recent_turns))
         cursor = conn.execute(
-            """
+            f"""
             SELECT 
                 dish_name,
                 COUNT(*) as order_count,
@@ -127,10 +198,11 @@ def get_dish_popularity(db_path: str | Path) -> list[dict[str, Any]]:
                 SUM(CASE WHEN executed = 1 THEN 1 ELSE 0 END) as executed_count,
                 ROUND(AVG(CASE WHEN executed = 1 THEN 1.0 ELSE 0.0 END) * 100, 1) as success_rate
             FROM meals
-            WHERE dish_name IS NOT NULL AND dish_name != ''
+            WHERE dish_name IS NOT NULL AND dish_name != '' AND turn_id IN ({placeholders})
             GROUP BY dish_name
             ORDER BY order_count DESC
-            """
+            """,
+            recent_turns,
         )
         return [dict(row) for row in cursor.fetchall()]
     finally:
@@ -138,7 +210,7 @@ def get_dish_popularity(db_path: str | Path) -> list[dict[str, Any]]:
 
 
 def get_competitor_performance(db_path: str | Path) -> list[dict[str, Any]]:
-    """Get competitor performance over time (latest snapshot per restaurant).
+    """Get competitor performance (latest snapshot per restaurant).
     
     Returns list of dicts with: restaurant_id, name, balance, reputation, is_open
     """
@@ -167,50 +239,65 @@ def get_competitor_performance(db_path: str | Path) -> list[dict[str, Any]]:
         conn.close()
 
 
-def get_competitor_balance_trend(db_path: str | Path, restaurant_id: int) -> list[dict[str, Any]]:
-    """Get balance trend for a specific competitor.
+def get_competitor_balance_trend(db_path: str | Path, restaurant_id: int, window_size: int = DEFAULT_WINDOW_SIZE) -> list[dict[str, Any]]:
+    """Get balance trend for a specific competitor for the last N turns.
     
     Returns list of dicts with: turn_id, balance, reputation
     """
     conn = get_connection(db_path)
     try:
+        recent_turns = _get_recent_turns_any(conn, window_size)
+        if not recent_turns:
+            return []
+        
+        placeholders = ",".join("?" * len(recent_turns))
         cursor = conn.execute(
-            """
+            f"""
             SELECT turn_id, balance, reputation
             FROM restaurant_snapshots
-            WHERE restaurant_id = ?
+            WHERE restaurant_id = ? AND turn_id IN ({placeholders})
             ORDER BY turn_id ASC
             """,
-            (restaurant_id,),
+            [restaurant_id] + recent_turns,
         )
         return [dict(row) for row in cursor.fetchall()]
     finally:
         conn.close()
 
 
-def get_recommended_bid_price(db_path: str | Path, ingredient: str) -> dict[str, Any]:
-    """Get recommended bid price for an ingredient based on historical winning bids.
+def get_recommended_bid_price(db_path: str | Path, ingredient: str, window_size: int = DEFAULT_WINDOW_SIZE) -> dict[str, Any]:
+    """Get recommended bid price for an ingredient based on recent winning bids.
     
     Returns dict with: ingredient, recommended_bid, confidence, based_on_samples
     """
     conn = get_connection(db_path)
     try:
+        recent_turns = _get_recent_turns(conn, window_size)
+        if not recent_turns:
+            return {
+                "ingredient": ingredient,
+                "recommended_bid": None,
+                "confidence": "none",
+                "based_on_samples": 0,
+            }
+        
+        placeholders = ",".join("?" * len(recent_turns))
         cursor = conn.execute(
-            """
+            f"""
             SELECT 
                 AVG(bid_amount) as avg_winning,
                 MIN(bid_amount) as min_winning,
                 MAX(bid_amount) as max_winning,
                 COUNT(*) as samples
             FROM bid_history
-            WHERE ingredient = ? AND won = 1
+            WHERE ingredient = ? AND won = 1 AND turn_id IN ({placeholders})
             """,
-            (ingredient,),
+            [ingredient] + recent_turns,
         )
         row = cursor.fetchone()
         if row and row["samples"] and row["samples"] > 0:
             avg = row["avg_winning"]
-            recommended = round(avg * 1.1, 2)  # 10% above average winning bid
+            recommended = round(avg * 1.1, 2)
             confidence = "high" if row["samples"] >= 10 else "medium" if row["samples"] >= 5 else "low"
             return {
                 "ingredient": ingredient,
@@ -276,5 +363,14 @@ def get_all_turns(db_path: str | Path) -> list[int]:
             """
         )
         return [row["turn_id"] for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_recent_turns_with_bids(db_path: str | Path, window_size: int = DEFAULT_WINDOW_SIZE) -> list[int]:
+    """Get the most recent N turn IDs that have bid_history data."""
+    conn = get_connection(db_path)
+    try:
+        return _get_recent_turns(conn, window_size)
     finally:
         conn.close()
