@@ -5,13 +5,14 @@ from typing import Any
 
 from datapizza.clients.openai_like import OpenAILikeClient
 
-from src.config import BASE_URL, REGOLO_API_KEY, REGOLO_BASE_URL, REGOLO_MODEL, TEAM_API_KEY, TEAM_ID, validate_config
+from src.config import BASE_URL, DB_PATH, REGOLO_API_KEY, REGOLO_BASE_URL, REGOLO_MODEL, TEAM_API_KEY, TEAM_ID, validate_config
 from src.logging_config import setup_loggers
 from src.monitor_state import write_monitor_state
 from src.state import GameState, StateUpdater
 from src.sse import listen, log
 from src.tools import MCPClient
 from src.agents import create_all_agents
+from src.data_collector import DataCollector
 
 
 async def main() -> None:
@@ -20,6 +21,7 @@ async def main() -> None:
 
     state = GameState(restaurant_id=TEAM_ID)
     state_updater = StateUpdater(BASE_URL, TEAM_API_KEY, TEAM_ID)
+    data_collector = DataCollector(BASE_URL, TEAM_API_KEY, DB_PATH, TEAM_ID)
 
     def phase_getter() -> str:
         return state.phase
@@ -70,7 +72,14 @@ async def main() -> None:
         # 2. Refresh state for the new turn
         state_updater.refresh_restaurant(state)
         state_updater.refresh_restaurants(state)
-        # 3. Run orchestrator for speaking/pre-bid
+        # 3. Collect initial data for the turn
+        try:
+            data_collector.collect_restaurants(state.turn_id)
+            data_collector.collect_own_restaurant(state.turn_id)
+            log("DATA", f"collected initial data for turn {state.turn_id}")
+        except Exception as e:
+            log("ERROR", f"data collection failed: {e}")
+        # 4. Run orchestrator for speaking/pre-bid
         ctx = state.summary()
         msg = f"Current phase: speaking. Execute phase-specific tasks.\n\nContext:\n{ctx}"
         try:
@@ -86,6 +95,23 @@ async def main() -> None:
         state_updater.refresh_restaurant(state)
         if phase in ("waiting", "closed_bid"):
             state_updater.refresh_meals(state)
+        
+        # Collect phase-specific data
+        try:
+            if phase == "waiting":
+                data_collector.collect_bid_history(state.turn_id)
+                data_collector.collect_meals(state.turn_id, TEAM_ID)
+                log("DATA", f"collected bid_history and meals for turn {state.turn_id}")
+            elif phase == "serving":
+                data_collector.collect_market_entries(state.turn_id)
+                data_collector.collect_restaurants(state.turn_id)
+                log("DATA", f"collected market_entries and restaurant menus for turn {state.turn_id}")
+            elif phase == "stopped":
+                data_collector.collect_all_for_turn(state.turn_id)
+                log("DATA", f"collected all end-of-turn data for turn {state.turn_id}")
+        except Exception as e:
+            log("ERROR", f"data collection failed for phase {phase}: {e}")
+        
         ctx = state.summary()
         msg = f"Current phase: {phase}. Execute phase-specific tasks.\n\nContext:\n{ctx}"
         try:
@@ -134,6 +160,12 @@ async def main() -> None:
     async def process_events() -> None:
         while True:
             event_type, event_data = await event_queue.get()
+            # Log all SSE events to database
+            try:
+                data_collector.log_sse_event(state.turn_id if state.turn_id > 0 else None, event_type, event_data)
+            except Exception as e:
+                log("ERROR", f"failed to log SSE event: {e}")
+            
             if event_type == "game_started":
                 state.turn_id = event_data.get("turn_id", 0)
                 state.phase = "speaking"
@@ -149,6 +181,9 @@ async def main() -> None:
                 append_event("EVENT", f"phase -> {phase}", {"phase": phase})
                 if phase not in ("stopped", "speaking"):
                     # speaking is handled in game_started above
+                    await asyncio.get_event_loop().run_in_executor(None, run_orchestrator_for_phase, phase)
+                elif phase == "stopped":
+                    # Collect final data when turn ends
                     await asyncio.get_event_loop().run_in_executor(None, run_orchestrator_for_phase, phase)
             elif event_type == "client_spawned":
                 log("EVENT", f"client={event_data.get('clientName')} order={event_data.get('orderText')}")

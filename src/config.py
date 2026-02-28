@@ -17,6 +17,9 @@ REGOLO_API_KEY = os.getenv("REGOLO_API_KEY", "")
 REGOLO_MODEL = os.getenv("REGOLO_MODEL", "gpt-oss-120b")
 REGOLO_BASE_URL = "https://api.regolo.ai/v1"
 
+# Data collection (Market Intelligence)
+DB_PATH = os.getenv("HACKAPIZZA_DB_PATH", "data/hackapizza.db")
+
 # Phase-to-agent mapping for extensibility (MVP: market_broker disabled)
 PHASE_AGENTS = {
     "speaking": ["menu_decider_pre_bid"],
