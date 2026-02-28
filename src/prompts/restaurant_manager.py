@@ -11,5 +11,8 @@ Phase routing:
 - serving: Call maitre (handle clients, prepare/serve dishes), market_broker
 - stopped: No actions; read-only phase
 
-Always pass the provided context to the sub-agents. Be concise in your delegation.
+CRITICAL: When calling menu_decider_pre_bid or menu_decider_post_bid, you MUST include the FULL Recipes list from the context.
+The menu deciders need the exact recipe names to create a valid menu. Copy the entire Recipes section verbatim.
+
+Always pass the COMPLETE provided context to the sub-agents, especially Recipes, Inventory, and Balance.
 """

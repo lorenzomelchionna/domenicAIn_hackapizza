@@ -1,7 +1,8 @@
 """@tool wrappers for Hackapizza MCP tools. Created via factory to inject MCP client."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import json
+from typing import TYPE_CHECKING, Any, Callable
 
 from datapizza.tools import tool
 
@@ -9,8 +10,8 @@ if TYPE_CHECKING:
     from .mcp_client import MCPClient
 
 
-def create_game_tools(mcp_client: MCPClient) -> list:
-    """Create tool functions bound to the given MCP client."""
+def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = None) -> tuple[list, dict]:
+    """Create tool functions bound to the given MCP client and optional state getter."""
     client = mcp_client
 
     @tool
@@ -63,6 +64,23 @@ def create_game_tools(mcp_client: MCPClient) -> list:
         """Send a direct message to another restaurant (team). recipient_id is the restaurant id."""
         return client.call("send_message", {"recipient_id": recipient_id, "text": text})
 
+    @tool
+    def get_recipes() -> str:
+        """Get all available recipes. Returns a JSON list of recipes with name, ingredients, prep_time, and prestige.
+        ALWAYS call this tool first to know which dishes you can add to the menu."""
+        if state_getter is None:
+            return json.dumps({"error": "state_getter not configured"})
+        state = state_getter()
+        return json.dumps(state.recipes, ensure_ascii=False)
+
+    @tool
+    def get_inventory() -> str:
+        """Get current ingredient inventory. Returns a JSON dict of ingredient -> quantity."""
+        if state_getter is None:
+            return json.dumps({"error": "state_getter not configured"})
+        state = state_getter()
+        return json.dumps(state.inventory, ensure_ascii=False)
+
     all_tools = [
         closed_bid,
         save_menu,
@@ -73,6 +91,8 @@ def create_game_tools(mcp_client: MCPClient) -> list:
         delete_market_entry,
         update_restaurant_is_open,
         send_message,
+        get_recipes,
+        get_inventory,
     ]
     by_name = {t.__name__: t for t in all_tools}
     return all_tools, by_name

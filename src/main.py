@@ -30,7 +30,10 @@ async def main() -> None:
         base_url=REGOLO_BASE_URL,
     )
 
-    restaurant_manager, sub_agents = create_all_agents(client, mcp_client, phase_getter)
+    def state_getter():
+        return state
+
+    restaurant_manager, sub_agents = create_all_agents(client, mcp_client, phase_getter, state_getter)
     maitre_agent = next(a for a in sub_agents if a.name == "maitre")
 
     event_queue: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue()
