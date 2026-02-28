@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hackapizza 2.0 - Knowledge Graph</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --card: #334155;
+            --text: #f1f5f9;
+            --dim: #94a3b8;
+            --accent: #38bdf8;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --purple: #a78bfa;
+            --orange: #fb923c;
+            --pink: #f472b6;
+            --teal: #2dd4bf;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        header {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            background: rgba(15, 23, 42, 0.92); backdrop-filter: blur(12px);
+            padding: 14px 24px; border-bottom: 1px solid var(--card);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        header h1 { font-size: 1.3rem; color: var(--accent); }
+        header p { font-size: 0.85rem; color: var(--dim); }
+        .header-right { display: flex; gap: 16px; align-items: center; }
+        .header-right span { font-size: 0.8rem; color: var(--dim); }
+
+        #canvas-container {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            overflow: hidden; cursor: grab;
+        }
+        #canvas-container.grabbing { cursor: grabbing; }
+
+        #world {
+            position: absolute;
+            transform-origin: 0 0;
+        }
+
+        svg#edges {
+            position: absolute; top: 0; left: 0;
+            pointer-events: none; overflow: visible;
+        }
+        svg#edges path { transition: stroke-opacity 0.3s, stroke-width 0.3s; }
+        svg#edges text { pointer-events: none; }
+
+        .node {
+            position: absolute; border-radius: 12px; cursor: pointer;
+            transition: transform 0.25s, box-shadow 0.25s, border-color 0.25s;
+            border: 2px solid transparent;
+            display: flex; align-items: center; justify-content: center;
+            text-align: center; font-weight: 600; font-size: 0.88rem;
+            user-select: none; z-index: 10;
+        }
+        .node:hover { transform: scale(1.08); z-index: 50; }
+
+        .node .icon { font-size: 1.4rem; margin-bottom: 2px; display: block; }
+        .node .label { display: block; line-height: 1.2; }
+
+        .tooltip {
+            position: fixed; width: min(360px, calc(100vw - 32px)); max-width: 360px;
+            max-height: min(80vh, 520px); padding: 18px; border-radius: 12px;
+            scrollbar-width: thin; scrollbar-color: var(--card) transparent;
+            background: rgba(30, 41, 59, 0.98); backdrop-filter: blur(16px);
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            box-shadow: 0 24px 64px rgba(0,0,0,0.55);
+            opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
+            z-index: 200; font-weight: 400;
+            overflow-y: auto; overflow-x: hidden;
+        }
+        .tooltip.visible { opacity: 1; pointer-events: auto; }
+        .tooltip h3 { color: var(--accent); margin-bottom: 10px; font-size: 1.05rem; line-height: 1.3; }
+        .tooltip p { color: var(--dim); font-size: 0.9rem; margin: 5px 0; line-height: 1.55; }
+        .tooltip .tag { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; margin: 2px 2px 2px 0; }
+        .tooltip ul { margin: 8px 0 8px 18px; color: var(--dim); font-size: 0.9rem; line-height: 1.5; }
+        .tooltip ul li { margin: 4px 0; }
+        .tooltip .divider { height: 1px; background: var(--card); margin: 12px 0; }
+        .tooltip code { background: var(--bg); padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: var(--accent); font-family: 'Courier New', monospace; }
+        .tooltip::-webkit-scrollbar { width: 8px; }
+        .tooltip::-webkit-scrollbar-track { background: transparent; }
+        .tooltip::-webkit-scrollbar-thumb { background: var(--card); border-radius: 4px; }
+
+        .edge-label-hover {
+            position: absolute; padding: 10px 14px; border-radius: 8px;
+            background: rgba(30, 41, 59, 0.95); border: 1px solid var(--card);
+            font-size: 0.82rem; color: var(--dim); white-space: nowrap;
+            opacity: 0; pointer-events: none; transition: opacity 0.2s;
+            z-index: 150;
+        }
+        .edge-label-hover.visible { opacity: 1; }
+
+        .legend {
+            position: fixed; bottom: 16px; left: 16px; z-index: 100;
+            background: rgba(30, 41, 59, 0.92); backdrop-filter: blur(12px);
+            padding: 12px 16px; border-radius: 10px; border: 1px solid var(--card);
+            font-size: 0.78rem; color: var(--dim);
+        }
+        .legend-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+        .legend-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+
+        .controls {
+            position: fixed; bottom: 16px; right: 16px; z-index: 100;
+            display: flex; gap: 8px;
+        }
+        .controls button {
+            width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--card);
+            background: rgba(30, 41, 59, 0.92); color: var(--text); font-size: 1.1rem;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            backdrop-filter: blur(12px); transition: background 0.2s;
+        }
+        .controls button:hover { background: var(--card); }
+    </style>
+</head>
+<body>
+
+<header>
+    <div>
+        <h1>🍕 Hackapizza 2.0 — Knowledge Graph</h1>
+        <p>Entity-Interaction Map &mdash; Hover on nodes and edges for details. Move mouse onto tooltip to read.</p>
+    </div>
+    <div class="header-right">
+        <span>Scroll to zoom &middot; Drag to pan</span>
+    </div>
+</header>
+
+<div id="canvas-container">
+    <div id="world">
+        <svg id="edges" width="1600" height="1100"></svg>
+    </div>
+</div>
+
+<div class="tooltip" id="tooltip" aria-live="polite"></div>
+
+<div class="legend">
+    <div class="legend-row"><div class="legend-dot" style="background: var(--accent);"></div> Core System</div>
+    <div class="legend-row"><div class="legend-dot" style="background: var(--warning);"></div> Resources</div>
+    <div class="legend-row"><div class="legend-dot" style="background: var(--success);"></div> Production</div>
+    <div class="legend-row"><div class="legend-dot" style="background: var(--purple);"></div> Demand / Clienti</div>
+    <div class="legend-row"><div class="legend-dot" style="background: var(--orange);"></div> Outcomes</div>
+    <div class="legend-row"><div class="legend-dot" style="background: var(--pink);"></div> Constraints</div>
+</div>
+
+<div class="controls">
+    <button onclick="zoomIn()" title="Zoom in">+</button>
+    <button onclick="zoomOut()" title="Zoom out">−</button>
+    <button onclick="resetView()" title="Reset view">⌂</button>
+</div>
+
+<script>
+const NODES = [
+    {
+        id: 'turno', label: 'Turno / Fasi', icon: '🔄',
+        x: 780, y: 30, w: 160, h: 62,
+        color: 'var(--accent)', bg: 'rgba(56,189,248,0.12)', border: 'rgba(56,189,248,0.5)',
+        tooltip: {
+            title: '🔄 Turno / Fasi di Gioco',
+            body: `<p>La partita e' divisa in <strong>turni</strong> (~5-7 min), ognuno con 5 fasi sequenziali:</p>
+            <p style="margin:6px 0;">
+                <span class="tag" style="background:var(--purple);color:#fff;">Speaking</span>
+                <span class="tag" style="background:var(--warning);color:#fff;">Closed Bid</span>
+                <span class="tag" style="background:var(--success);color:#fff;">Waiting</span>
+                <span class="tag" style="background:var(--error);color:#fff;">Serving</span>
+                <span class="tag" style="background:#64748b;color:#fff;">Stopped</span>
+            </p>
+            <div class="divider"></div>
+            <ul>
+                <li><strong>Speaking:</strong> Diplomazia, alleanze, impostazione menu</li>
+                <li><strong>Closed Bid:</strong> Asta cieca per ingredienti</li>
+                <li><strong>Waiting:</strong> Assestamento strategico</li>
+                <li><strong>Serving:</strong> Servizio clienti</li>
+                <li><strong>Stopped:</strong> Fine turno, ingredienti scadono</li>
+            </ul>
+            <div class="divider"></div>
+            <p>Le durate variano. Segui sempre SSE <code>game_phase_changed</code>.</p>`
+        }
+    },
+    {
+        id: 'federazione', label: 'Federazione', icon: '🏛️',
+        x: 160, y: 180, w: 170, h: 62,
+        color: 'var(--accent)', bg: 'rgba(56,189,248,0.12)', border: 'rgba(56,189,248,0.5)',
+        tooltip: {
+            title: '🏛️ Federazione (Fornitore Ufficiale)',
+            body: `<p>La Federazione gestisce i <strong>canali ufficiali di approvvigionamento</strong> degli ingredienti nel Multiverso.</p>
+            <div class="divider"></div>
+            <p>Durante la fase <strong>Closed Bid</strong>, apre le rotte commerciali e distribuisce ingredienti tramite <strong>asta cieca</strong>.</p>
+            <ul>
+                <li>Ingredienti disponibili <strong>limitati</strong> per turno</li>
+                <li>Chi offre di piu' ha priorita'</li>
+                <li>Nessuno conosce le offerte degli altri fino alla fine</li>
+                <li>Non e' garantito ottenere tutto</li>
+            </ul>
+            <div class="divider"></div>
+            <p>Tool: <code>closed_bid</code> — invia <code>{ ingredient, bid, quantity }</code></p>
+            <p>Storico: <code>GET /bid_history?turn_id=&lt;id&gt;</code></p>`
+        }
+    },
+    {
+        id: 'ristorante', label: 'IL TUO\nRISTORANTE', icon: '🍕',
+        x: 580, y: 180, w: 200, h: 72,
+        color: 'var(--accent)', bg: 'rgba(56,189,248,0.18)', border: 'rgba(56,189,248,0.7)',
+        tooltip: {
+            title: '🍕 Il Tuo Ristorante (Entita\' Centrale)',
+            body: `<p>Avamposto culturale, nodo economico, punto di contatto tra civilta'. E' l'entita' che controlli.</p>
+            <div class="divider"></div>
+            <p><strong>Attributi:</strong></p>
+            <ul>
+                <li>💰 <strong>Saldo</strong> — la cassa, indicatore principale di successo</li>
+                <li>📦 <strong>Inventario</strong> — ingredienti disponibili (scadono a fine turno!)</li>
+                <li>📋 <strong>Menu</strong> — ricette proposte + prezzi</li>
+                <li>⭐ <strong>Reputazione</strong> — percezione nel Multiverso</li>
+            </ul>
+            <div class="divider"></div>
+            <p>Puoi aprire/chiudere il ristorante con <code>update_restaurant_is_open</code>. Chiuso = invisibile ai clienti.</p>
+            <p>Info: <code>GET /restaurant/:id</code> (solo il tuo)</p>`
+        }
+    },
+    {
+        id: 'altri', label: 'Altri\nRistoranti', icon: '🏪',
+        x: 1100, y: 180, w: 170, h: 62,
+        color: 'var(--accent)', bg: 'rgba(56,189,248,0.12)', border: 'rgba(56,189,248,0.5)',
+        tooltip: {
+            title: '🏪 Altri Ristoranti (Competitori)',
+            body: `<p>Tutti i team gestiscono un ristorante nello stesso universo condiviso. Sono <strong>competitori</strong> ma anche potenziali <strong>alleati</strong>.</p>
+            <div class="divider"></div>
+            <p><strong>Interazioni:</strong></p>
+            <ul>
+                <li>💬 Messaggi diretti via <code>send_message</code></li>
+                <li>🤝 Alleanze e accordi nella Speaking Phase</li>
+                <li>🗡️ Tradimenti memorabili possibili</li>
+                <li>🏪 Scambi ingredienti via Mercato Interno</li>
+                <li>⚔️ Competizione su stessi ingredienti in asta</li>
+            </ul>
+            <div class="divider"></div>
+            <p>Visibilita': <code>GET /restaurants</code> per overview di tutti.</p>
+            <p>Menu altrui: <code>GET /restaurant/:id/menu</code></p>`
+        }
+    },
+    {
+        id: 'inventario', label: 'Inventario', icon: '📦',
+        x: 380, y: 380, w: 160, h: 58,
+        color: 'var(--warning)', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.5)',
+        tooltip: {
+            title: '📦 Inventario (Magazzino Ingredienti)',
+            body: `<p>Gli ingredienti in tuo possesso in un dato momento. Alimentato dall'asta e dal mercato.</p>
+            <div class="divider"></div>
+            <p style="color:var(--error);"><strong>⚠️ REGOLA CRITICA: Tutto scade a fine turno!</strong></p>
+            <p>Instabilita' quantiche, decadimenti biologici, rotte troppo lunghe — gli ingredienti non sopravvivono alla fase Stopped.</p>
+            <div class="divider"></div>
+            <p><strong>Strategia:</strong></p>
+            <ul>
+                <li>Compra solo cio' che riesci a cucinare</li>
+                <li>Evita sprechi (ogni ingrediente sprecato = soldi persi)</li>
+                <li>Vendi il surplus sul Mercato prima che scada</li>
+            </ul>
+            <div class="divider"></div>
+            <p>Controlla con <code>GET /restaurant/:id</code></p>`
+        }
+    },
+    {
+        id: 'menu', label: 'Menu', icon: '📋',
+        x: 780, y: 380, w: 140, h: 58,
+        color: 'var(--warning)', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.5)',
+        tooltip: {
+            title: '📋 Menu (Posizionamento Strategico)',
+            body: `<p>Il menu comunica <strong>a chi ti rivolgi</strong> e chi intendi respingere. Definisce il tuo ruolo nel Multiverso.</p>
+            <div class="divider"></div>
+            <p><strong>Composizione:</strong></p>
+            <ul>
+                <li>Lista piatti disponibili (da ricette valide)</li>
+                <li>Prezzo di ciascun piatto</li>
+            </ul>
+            <p><strong>Strategia prezzo:</strong></p>
+            <ul>
+                <li>📉 <strong>Prezzi bassi</strong> — alto volume, basso margine, attira Esploratori</li>
+                <li>📈 <strong>Prezzi alti</strong> — margini migliori, rischio pochi clienti, attira Astrobaroni/Saggi</li>
+            </ul>
+            <div class="divider"></div>
+            <p>Tool: <code>save_menu</code> — <code>{ items: [{ name, price }] }</code></p>
+            <p>Fasi: Speaking, Closed Bid, Waiting (NON in Serving)</p>`
+        }
+    },
+    {
+        id: 'mercato', label: 'Mercato\nInterno', icon: '🏪',
+        x: 1100, y: 380, w: 170, h: 62,
+        color: 'var(--warning)', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.5)',
+        tooltip: {
+            title: '🏪 Mercato Interno (Scambio tra Ristoranti)',
+            body: `<p>Piattaforma <strong>pubblica</strong> dove i ristoranti comprano e vendono ingredienti tra loro.</p>
+            <div class="divider"></div>
+            <p><strong>Funzionalita':</strong></p>
+            <ul>
+                <li>Comprare ingredienti mancanti post-asta</li>
+                <li>Vendere surplus prima che scada</li>
+                <li>Costruire alleanze (o trappole) economiche</li>
+            </ul>
+            <p style="color:var(--error);">Le offerte vengono annullate a fine turno.</p>
+            <div class="divider"></div>
+            <p><strong>Tool:</strong></p>
+            <ul>
+                <li><code>create_market_entry</code> — BUY/SELL (broadcast a tutti)</li>
+                <li><code>execute_transaction</code> — accetta offerta</li>
+                <li><code>delete_market_entry</code> — ritira offerta</li>
+            </ul>
+            <p>Leggi: <code>GET /market/entries</code></p>`
+        }
+    },
+    {
+        id: 'ricette', label: 'Ricette', icon: '📖',
+        x: 580, y: 540, w: 150, h: 58,
+        color: 'var(--success)', bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.5)',
+        tooltip: {
+            title: '📖 Ricette (Catalogo Disponibile)',
+            body: `<p>Ogni ricetta racconta una storia — nata su pianeti agricoli, monasteri orbitanti o cucine di guerre stellari.</p>
+            <div class="divider"></div>
+            <p><strong>Una ricetta definisce:</strong></p>
+            <ul>
+                <li>🧪 <strong>Ingredienti</strong> necessari (tipo e quantita')</li>
+                <li>⏱️ <strong>Tempo</strong> di preparazione</li>
+                <li>⭐ <strong>Prestigio</strong> del piatto</li>
+            </ul>
+            <div class="divider"></div>
+            <p>Le ricette sono il ponte tra ingredienti e piatti. Scegli quelle che puoi sostenere con il tuo inventario!</p>
+            <p>Endpoint: <code>GET /recipes</code> — array completo</p>`
+        }
+    },
+    {
+        id: 'piatto', label: 'Piatto', icon: '🍝',
+        x: 680, y: 700, w: 150, h: 62,
+        color: 'var(--success)', bg: 'rgba(16,185,129,0.15)', border: 'rgba(16,185,129,0.6)',
+        tooltip: {
+            title: '🍝 Piatto (Prodotto Finale)',
+            body: `<p>Il piatto e' il risultato della preparazione: ingredienti consumati dall'inventario seguendo una ricetta.</p>
+            <div class="divider"></div>
+            <p><strong>Ciclo di vita:</strong></p>
+            <ul>
+                <li>1. Cliente arriva (SSE <code>client_spawned</code>)</li>
+                <li>2. Interpreti la richiesta + verifichi intolleranze</li>
+                <li>3. <code>prepare_dish</code> → consuma ingredienti, avvia timer</li>
+                <li>4. SSE <code>preparation_complete</code> → piatto pronto</li>
+                <li>5. <code>serve_dish</code> → consegna al cliente</li>
+            </ul>
+            <div class="divider"></div>
+            <p>Solo in fase <strong>Serving</strong>. Richiede ingredienti in inventario.</p>`
+        }
+    },
+    {
+        id: 'clienti', label: 'Clienti', icon: '👽',
+        x: 480, y: 870, w: 150, h: 62,
+        color: 'var(--purple)', bg: 'rgba(167,139,250,0.12)', border: 'rgba(167,139,250,0.5)',
+        tooltip: {
+            title: '👽 Clienti (4 Archetipi del Multiverso)',
+            body: `<p>Arrivano durante la <strong>Serving Phase</strong>. Sono archetipi sociali con aspettative, vincoli e priorita' diverse.</p>
+            <div class="divider"></div>
+            <p>🚀 <strong>Esploratore Galattico</strong><br/>Poco tempo, poco budget, non esigente. Vuole: veloce ed economico.</p>
+            <p>💰 <strong>Astrobarone</strong><br/>Pochissimo tempo, alto budget, pretende qualita'. Vuole: buono e rapido.</p>
+            <p>🔭 <strong>Saggi del Cosmo</strong><br/>Molto tempo, alto budget, cercano eccellenza. Vuole: prestigio e cultura.</p>
+            <p>👨‍👩‍👧‍👦 <strong>Famiglie Orbitali</strong><br/>Molto tempo, budget medio, cercano equilibrio. Vuole: qualita'/prezzo.</p>
+            <div class="divider"></div>
+            <p>Il tuo <strong>menu</strong> determina chi viene! Evento SSE: <code>client_spawned</code></p>`
+        }
+    },
+    {
+        id: 'intolleranze', label: 'Intolleranze', icon: '🚫',
+        x: 1020, y: 700, w: 175, h: 58,
+        color: 'var(--pink)', bg: 'rgba(244,114,182,0.12)', border: 'rgba(244,114,182,0.5)',
+        tooltip: {
+            title: '🚫 Intolleranze e Restrizioni Alimentari',
+            body: `<p>Nel Multiverso un errore alimentare non e' solo un reclamo. Puo' essere un <strong>incidente diplomatico</strong>. O peggio.</p>
+            <div class="divider"></div>
+            <p style="color:var(--error);"><strong>⚠️ NON servire piatti con ingredienti a cui il cliente e' intollerante!</strong></p>
+            <div class="divider"></div>
+            <p><strong>Conseguenze di un errore:</strong></p>
+            <ul>
+                <li>🚨 Il cliente non paga</li>
+                <li>📉 Danno alla reputazione</li>
+                <li>⚖️ Possibili sanzioni federali</li>
+                <li>Il danno si estende <strong>oltre il singolo turno</strong></li>
+            </ul>
+            <div class="divider"></div>
+            <p>Verifica sempre le intolleranze prima di <code>serve_dish</code>!</p>`
+        }
+    },
+    {
+        id: 'saldo', label: 'Saldo', icon: '💰',
+        x: 320, y: 870, w: 130, h: 58,
+        color: 'var(--orange)', bg: 'rgba(251,146,60,0.12)', border: 'rgba(251,146,60,0.5)',
+        tooltip: {
+            title: '💰 Saldo (La Cassa)',
+            body: `<p>Il <strong>principale indicatore di successo</strong> e prestigio del ristorante. L'obiettivo e' massimizzarlo.</p>
+            <div class="divider"></div>
+            <p><strong>Flussi in entrata (+):</strong></p>
+            <ul>
+                <li>Clienti che pagano i piatti serviti</li>
+                <li>Vendite al Mercato Interno</li>
+            </ul>
+            <p><strong>Flussi in uscita (-):</strong></p>
+            <ul>
+                <li>Acquisti in Asta Cieca (closed_bid)</li>
+                <li>Acquisti al Mercato Interno</li>
+                <li>Ingredienti sprecati (costo sommerso)</li>
+            </ul>
+            <div class="divider"></div>
+            <p>Controlla: <code>GET /restaurant/:id</code></p>`
+        }
+    },
+    {
+        id: 'reputazione', label: 'Reputazione', icon: '⭐',
+        x: 830, y: 870, w: 170, h: 58,
+        color: 'var(--orange)', bg: 'rgba(251,146,60,0.12)', border: 'rgba(251,146,60,0.5)',
+        tooltip: {
+            title: '⭐ Reputazione',
+            body: `<p>La percezione del ristorante nel Multiverso. <strong>Influenza la scelta dei clienti</strong> nei turni futuri.</p>
+            <div class="divider"></div>
+            <p><strong>Aumenta con:</strong></p>
+            <ul>
+                <li>Clienti serviti bene e soddisfatti</li>
+                <li>Piatti di qualita' e coerenti</li>
+                <li>Servizio continuo e affidabile</li>
+            </ul>
+            <p><strong>Diminuisce con:</strong></p>
+            <ul>
+                <li>Clienti non serviti</li>
+                <li>Piatti sbagliati o con intolleranze</li>
+                <li>Ristorante chiuso troppo spesso</li>
+            </ul>
+            <div class="divider"></div>
+            <p>Il danno reputazionale si estende <strong>oltre il singolo turno</strong>.</p>`
+        }
+    }
+];
+
+const EDGES = [
+    { from: 'turno', to: 'ristorante', label: 'orchestra fasi', color: 'var(--accent)', dash: '6,4',
+      detail: 'Il Turno scandisce il ritmo: le 5 fasi determinano quali operazioni sono consentite.' },
+    { from: 'turno', to: 'federazione', label: 'apre asta', color: 'var(--accent)', dash: '6,4',
+      detail: 'In Closed Bid Phase la Federazione apre i canali commerciali.' },
+    { from: 'federazione', to: 'inventario', label: 'asta cieca → ingredienti', color: 'var(--warning)',
+      detail: 'Tool: closed_bid — invii {ingredient, bid, quantity}. Chi offre di piu\' ha priorita\'. Potresti ricevere meno di quanto richiesto.' },
+    { from: 'inventario', to: 'piatto', label: 'consuma ingredienti', color: 'var(--success)',
+      detail: 'prepare_dish consuma gli ingredienti dall\'inventario secondo la ricetta. Se mancano ingredienti, la preparazione fallisce.' },
+    { from: 'ricette', to: 'piatto', label: 'definisce ricetta', color: 'var(--success)',
+      detail: 'Ogni ricetta specifica: ingredienti necessari, tempo di preparazione, prestigio del piatto. GET /recipes per il catalogo completo.' },
+    { from: 'ricette', to: 'menu', label: 'seleziona piatti', color: 'var(--warning)',
+      detail: 'Il menu e\' composto da ricette valide + prezzi. Tool: save_menu — {items: [{name, price}]}' },
+    { from: 'menu', to: 'clienti', label: 'attira clientela', color: 'var(--purple)',
+      detail: 'Il menu determina il tipo di clienti: piatti economici → Esploratori. Piatti prestigiosi → Astrobaroni/Saggi. Equilibrato → Famiglie.' },
+    { from: 'piatto', to: 'clienti', label: 'serve_dish', color: 'var(--success)',
+      detail: 'Tool: serve_dish — {dish_name, client_id}. Solo dopo preparation_complete. Verifica intolleranze prima!' },
+    { from: 'clienti', to: 'saldo', label: 'pagamento €', color: 'var(--orange)',
+      detail: 'Il cliente paga il prezzo dal menu. Se servito male o non servito: NON paga.' },
+    { from: 'clienti', to: 'reputazione', label: 'feedback ±', color: 'var(--orange)',
+      detail: 'Cliente soddisfatto = reputazione sale. Non servito o intolleranza violata = danno reputazionale che si estende oltre il turno.' },
+    { from: 'intolleranze', to: 'clienti', label: 'vincoli', color: 'var(--pink)',
+      detail: 'Ogni cliente puo\' avere intolleranze alimentari. Servire un piatto con ingredienti vietati = incidente diplomatico, no pagamento, danno reputazione.' },
+    { from: 'intolleranze', to: 'piatto', label: 'check prima di servire', color: 'var(--pink)', dash: '4,3',
+      detail: 'Prima di serve_dish, verifica SEMPRE che il piatto non contenga ingredienti a cui il cliente e\' intollerante.' },
+    { from: 'ristorante', to: 'altri', label: 'messaggi / alleanze', color: 'var(--accent)',
+      detail: 'Tool: send_message — {recipient_id, text}. Negozia alleanze, accordi, scambi. Ma attenzione ai tradimenti!' },
+    { from: 'altri', to: 'mercato', label: 'offerte pubbliche', color: 'var(--warning)',
+      detail: 'Gli altri ristoranti pubblicano offerte BUY/SELL sul mercato. Sii reattivo: non farti rubare gli ingredienti!' },
+    { from: 'ristorante', to: 'mercato', label: 'compra / vendi', color: 'var(--warning)',
+      detail: 'Tool: create_market_entry (BUY/SELL), execute_transaction (accetta offerta), delete_market_entry. Le offerte scadono a fine turno.' },
+    { from: 'mercato', to: 'inventario', label: 'ingredienti scambiati', color: 'var(--warning)', dash: '4,3',
+      detail: 'Ingredienti acquistati sul mercato entrano nell\'inventario. Ingredienti venduti escono. Utile post-asta o per surplus.' },
+    { from: 'ristorante', to: 'inventario', label: 'gestisce', color: 'var(--dim)', dash: '3,3',
+      detail: 'L\'inventario e\' un attributo del ristorante. Controlla con GET /restaurant/:id.' },
+    { from: 'ristorante', to: 'menu', label: 'imposta', color: 'var(--dim)', dash: '3,3',
+      detail: 'Il ristorante definisce il proprio menu. Tool: save_menu. Fasi: Speaking, Closed Bid, Waiting.' },
+    { from: 'saldo', to: 'federazione', label: 'paga bid', color: 'var(--orange)', dash: '4,3',
+      detail: 'Gli ingredienti ottenuti in asta vengono pagati dal saldo al prezzo della bid vincente.' },
+];
+
+const world = document.getElementById('world');
+const svgEdges = document.getElementById('edges');
+const tooltipEl = document.getElementById('tooltip');
+const container = document.getElementById('canvas-container');
+
+let scale = 1, panX = 0, panY = 0;
+let isDragging = false, dragStartX, dragStartY;
+
+function createNodes() {
+    NODES.forEach(n => {
+        const el = document.createElement('div');
+        el.className = 'node';
+        el.id = 'node-' + n.id;
+        el.style.left = (n.x - n.w/2) + 'px';
+        el.style.top = (n.y - n.h/2) + 'px';
+        el.style.width = n.w + 'px';
+        el.style.height = n.h + 'px';
+        el.style.background = n.bg;
+        el.style.borderColor = n.border;
+        el.style.color = n.color;
+        if (n.id === 'ristorante') {
+            el.style.boxShadow = '0 0 30px rgba(56,189,248,0.2)';
+            el.style.fontSize = '0.95rem';
+        }
+        el.innerHTML = `<div><span class="icon">${n.icon}</span><span class="label">${n.label.replace(/\n/g, '<br/>')}</span></div>`;
+
+        el.addEventListener('mouseenter', () => showTooltip(n, el));
+        el.addEventListener('mouseleave', () => scheduleHideTooltip());
+        world.appendChild(el);
+    });
+}
+
+function getNodeCenter(id) {
+    const n = NODES.find(n => n.id === id);
+    return { x: n.x, y: n.y };
+}
+
+function getEdgePoints(fromId, toId) {
+    const a = NODES.find(n => n.id === fromId);
+    const b = NODES.find(n => n.id === toId);
+    const ax = a.x, ay = a.y, bx = b.x, by = b.y;
+
+    const angle = Math.atan2(by - ay, bx - ax);
+    const hw_a = a.w / 2 + 4, hh_a = a.h / 2 + 4;
+    const hw_b = b.w / 2 + 4, hh_b = b.h / 2 + 4;
+
+    function borderPoint(cx, cy, hw, hh, ang) {
+        const cos = Math.cos(ang), sin = Math.sin(ang);
+        const sx = hw / Math.abs(cos || 0.001);
+        const sy = hh / Math.abs(sin || 0.001);
+        const s = Math.min(sx, sy);
+        return { x: cx + cos * s, y: cy + sin * s };
+    }
+
+    const start = borderPoint(ax, ay, hw_a, hh_a, angle);
+    const end = borderPoint(bx, by, hw_b, hh_b, angle + Math.PI);
+    return { start, end };
+}
+
+function drawEdges() {
+    svgEdges.innerHTML = '';
+    const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+
+    const colors = [...new Set(EDGES.map(e => e.color))];
+    colors.forEach(c => {
+        const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+        const cid = c.replace(/[^a-zA-Z0-9]/g, '');
+        marker.setAttribute('id', 'arrow-' + cid);
+        marker.setAttribute('viewBox', '0 0 10 10');
+        marker.setAttribute('refX', '9'); marker.setAttribute('refY', '5');
+        marker.setAttribute('markerWidth', '8'); marker.setAttribute('markerHeight', '8');
+        marker.setAttribute('orient', 'auto-start-reverse');
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M 0 1 L 10 5 L 0 9 z');
+        path.setAttribute('fill', c);
+        marker.appendChild(path);
+        defs.appendChild(marker);
+    });
+    svgEdges.appendChild(defs);
+
+    EDGES.forEach((e, i) => {
+        const pts = getEdgePoints(e.from, e.to);
+        const mx = (pts.start.x + pts.end.x) / 2;
+        const my = (pts.start.y + pts.end.y) / 2;
+        const dx = pts.end.x - pts.start.x;
+        const dy = pts.end.y - pts.start.y;
+
+        const offset = 0;
+        const cx = mx + dy * 0.08 + offset;
+        const cy = my - dx * 0.08 + offset;
+
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.style.cursor = 'pointer';
+        g.style.pointerEvents = 'auto';
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', `M ${pts.start.x} ${pts.start.y} Q ${cx} ${cy} ${pts.end.x} ${pts.end.y}`);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', e.color);
+        path.setAttribute('stroke-width', '2');
+        path.setAttribute('stroke-opacity', '0.5');
+        const cid = e.color.replace(/[^a-zA-Z0-9]/g, '');
+        path.setAttribute('marker-end', `url(#arrow-${cid})`);
+        if (e.dash) path.setAttribute('stroke-dasharray', e.dash);
+        g.appendChild(path);
+
+        const hitPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        hitPath.setAttribute('d', `M ${pts.start.x} ${pts.start.y} Q ${cx} ${cy} ${pts.end.x} ${pts.end.y}`);
+        hitPath.setAttribute('fill', 'none');
+        hitPath.setAttribute('stroke', 'transparent');
+        hitPath.setAttribute('stroke-width', '16');
+        g.appendChild(hitPath);
+
+        const labelX = (pts.start.x + 2*cx + pts.end.x) / 4;
+        const labelY = (pts.start.y + 2*cy + pts.end.y) / 4;
+
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', labelX);
+        text.setAttribute('y', labelY - 6);
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('fill', e.color);
+        text.setAttribute('font-size', '10');
+        text.setAttribute('font-family', '-apple-system, sans-serif');
+        text.setAttribute('opacity', '0.7');
+        text.textContent = e.label;
+        g.appendChild(text);
+
+        g.addEventListener('mouseenter', () => {
+            path.setAttribute('stroke-opacity', '1');
+            path.setAttribute('stroke-width', '3.5');
+            text.setAttribute('opacity', '1');
+            text.setAttribute('font-size', '11.5');
+            if (e.detail) showEdgeTooltip(e, labelX, labelY);
+        });
+        g.addEventListener('mouseleave', () => {
+            path.setAttribute('stroke-opacity', '0.5');
+            path.setAttribute('stroke-width', '2');
+            text.setAttribute('opacity', '0.7');
+            text.setAttribute('font-size', '10');
+            hideEdgeTooltip();
+        });
+
+        svgEdges.appendChild(g);
+    });
+}
+
+let edgeTooltipEl = null;
+function showEdgeTooltip(e, x, y) {
+    if (!edgeTooltipEl) {
+        edgeTooltipEl = document.createElement('div');
+        edgeTooltipEl.className = 'edge-label-hover';
+        world.appendChild(edgeTooltipEl);
+    }
+    edgeTooltipEl.textContent = e.detail;
+    edgeTooltipEl.style.maxWidth = '320px';
+    edgeTooltipEl.style.whiteSpace = 'normal';
+    edgeTooltipEl.style.left = (x + 12) + 'px';
+    edgeTooltipEl.style.top = (y + 12) + 'px';
+    edgeTooltipEl.classList.add('visible');
+}
+function hideEdgeTooltip() {
+    if (edgeTooltipEl) edgeTooltipEl.classList.remove('visible');
+}
+
+let tooltipHideTimer = null;
+
+function scheduleHideTooltip() {
+    if (tooltipHideTimer) clearTimeout(tooltipHideTimer);
+    tooltipHideTimer = setTimeout(hideTooltip, 180);
+}
+
+function cancelHideTooltip() {
+    if (tooltipHideTimer) clearTimeout(tooltipHideTimer);
+    tooltipHideTimer = null;
+}
+
+function showTooltip(node, nodeEl) {
+    cancelHideTooltip();
+    tooltipEl.innerHTML = `<h3>${node.tooltip.title}</h3>${node.tooltip.body}`;
+    tooltipEl.classList.add('visible');
+
+    requestAnimationFrame(() => positionTooltip(nodeEl));
+}
+
+function positionTooltip(nodeEl) {
+    const rect = nodeEl.getBoundingClientRect();
+    const tooltipW = Math.min(360, window.innerWidth - 24);
+    const tooltipMaxH = Math.min(520, window.innerHeight - 80);
+    const padding = 12;
+    const gap = 6;
+    const headerH = 56;
+
+    let left = rect.right + gap;
+    let top = rect.top;
+    if (left + tooltipW > window.innerWidth - padding) left = rect.left - tooltipW - gap;
+    if (left < padding) left = padding;
+    if (top + tooltipMaxH > window.innerHeight - padding) top = window.innerHeight - tooltipMaxH - padding;
+    if (top < headerH + padding) top = headerH + padding;
+
+    tooltipEl.style.left = left + 'px';
+    tooltipEl.style.top = top + 'px';
+}
+
+function hideTooltip() {
+    tooltipEl.classList.remove('visible');
+}
+
+tooltipEl.addEventListener('mouseenter', cancelHideTooltip);
+tooltipEl.addEventListener('mouseleave', () => { hideTooltip(); });
+
+function updateTransform() {
+    world.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+}
+
+container.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.92 : 1.08;
+    const newScale = Math.min(3, Math.max(0.3, scale * delta));
+    const rect = container.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    panX = mx - (mx - panX) * (newScale / scale);
+    panY = my - (my - panY) * (newScale / scale);
+    scale = newScale;
+    updateTransform();
+}, { passive: false });
+
+container.addEventListener('mousedown', (e) => {
+    if (e.target.closest('.node')) return;
+    isDragging = true;
+    dragStartX = e.clientX - panX;
+    dragStartY = e.clientY - panY;
+    container.classList.add('grabbing');
+});
+window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    panX = e.clientX - dragStartX;
+    panY = e.clientY - dragStartY;
+    updateTransform();
+});
+window.addEventListener('mouseup', () => {
+    isDragging = false;
+    container.classList.remove('grabbing');
+});
+
+function zoomIn() { scale = Math.min(3, scale * 1.2); updateTransform(); }
+function zoomOut() { scale = Math.max(0.3, scale * 0.83); updateTransform(); }
+function resetView() {
+    const rect = container.getBoundingClientRect();
+    const graphW = 1400, graphH = 1000;
+    scale = Math.min((rect.width - 40) / graphW, (rect.height - 100) / graphH, 1);
+    panX = (rect.width - graphW * scale) / 2;
+    panY = (rect.height - graphH * scale) / 2 + 20;
+    updateTransform();
+}
+
+createNodes();
+drawEdges();
+
+window.addEventListener('load', resetView);
+window.addEventListener('resize', resetView);
+</script>
+</body>
+</html>
