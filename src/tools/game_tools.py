@@ -65,13 +65,25 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         return client.call("send_message", {"recipient_id": recipient_id, "text": text})
 
     @tool
-    def get_recipes() -> str:
+    def get_recipes(prep_time_min: int, prep_time_max:int, prestige_min: int, prestige_max: int) -> str:
         """Get all available recipes. Returns a JSON list of recipes with name, ingredients, prep_time, and prestige.
         ALWAYS call this tool first to know which dishes you can add to the menu."""
         if state_getter is None:
             return json.dumps({"error": "state_getter not configured"})
+        
         state = state_getter()
-        return json.dumps(state.recipes, ensure_ascii=False)
+
+        filtered_recipes = []
+        for recipe in state.recipes:
+            if (prep_time_min <= recipe["preparationTimeMs"] <= prep_time_max and
+                prestige_min <= recipe["prestige"] <= prestige_max):
+                
+                filtered_recipes.append(recipe)
+                
+                if len(filtered_recipes) == 20:
+                    break
+
+        return json.dumps(filtered_recipes, ensure_ascii=False)
 
     @tool
     def get_inventory() -> str:
@@ -121,3 +133,4 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
     by_name = {t.__name__: t for t in all_tools}
     return all_tools, by_name
 
+    

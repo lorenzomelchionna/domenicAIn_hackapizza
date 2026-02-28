@@ -35,7 +35,7 @@ class GameState:
             f"Inventory: {self.inventory}",
             f"Menu: {self.menu}",
             f"Draft menu: {self.draft_menu}",
-            f"Recipes: {self.recipes[:10]}",
+            #f"Recipes: {self.recipes}",
             f"Pending clients: {self.pending_clients}",
             f"Prepared dishes: {self.prepared_dishes}",
         ]

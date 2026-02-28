@@ -8,6 +8,7 @@ from datapizza.clients.openai_like import OpenAILikeClient
 from src.config import BASE_URL, DB_PATH, REGOLO_API_KEY, REGOLO_BASE_URL, REGOLO_MODEL, TEAM_API_KEY, TEAM_ID, validate_config
 from src.logging_config import setup_loggers
 from src.monitor_state import write_monitor_state
+from src.monitoring import tracer
 from src.state import GameState, StateUpdater
 from src.sse import listen, log
 from src.tools import MCPClient
@@ -83,7 +84,13 @@ async def main() -> None:
         ctx = state.summary()
         msg = f"Current phase: speaking. Execute phase-specific tasks.\n\nContext:\n{ctx}"
         try:
-            resp = restaurant_manager.run(msg)
+            if tracer is not None:
+                with tracer.start_as_current_span("hackapizza.turn_start") as span:
+                    span.set_attribute("turn_id", state.turn_id)
+                    span.set_attribute("phase", "speaking")
+                    resp = restaurant_manager.run(msg)
+            else:
+                resp = restaurant_manager.run(msg)
             log("AGENT", f"orchestrator response (speaking): {resp.text[:200] if resp and resp.text else 'ok'}")
             append_event("AGENT", "orchestrator phase=speaking", {"response_preview": (resp.text[:150] if resp and resp.text else "ok")})
         except Exception as e:
@@ -115,7 +122,13 @@ async def main() -> None:
         ctx = state.summary()
         msg = f"Current phase: {phase}. Execute phase-specific tasks.\n\nContext:\n{ctx}"
         try:
-            resp = restaurant_manager.run(msg)
+            if tracer is not None:
+                with tracer.start_as_current_span("hackapizza.phase") as span:
+                    span.set_attribute("phase", phase)
+                    span.set_attribute("turn_id", state.turn_id)
+                    resp = restaurant_manager.run(msg)
+            else:
+                resp = restaurant_manager.run(msg)
             log("AGENT", f"orchestrator response: {resp.text[:200] if resp and resp.text else 'ok'}")
             append_event("AGENT", f"orchestrator phase={phase}", {"response_preview": (resp.text[:150] if resp and resp.text else "ok")})
         except Exception as e:
@@ -138,7 +151,13 @@ async def main() -> None:
             f"Match the order to a menu item. Check intolerances. If valid, call prepare_dish."
         )
         try:
-            maitre_agent.run(msg)
+            if tracer is not None:
+                with tracer.start_as_current_span("hackapizza.maitre.client_arrival") as span:
+                    span.set_attribute("client_name", client_name)
+                    span.set_attribute("order_preview", str(order_text)[:200])
+                    maitre_agent.run(msg)
+            else:
+                maitre_agent.run(msg)
         except Exception as e:
             log("ERROR", f"maitre (client) failed: {e}")
 
@@ -153,7 +172,12 @@ async def main() -> None:
             f"Find the client_id from the Pending clients list and call serve_dish(dish_name, client_id)."
         )
         try:
-            maitre_agent.run(msg)
+            if tracer is not None:
+                with tracer.start_as_current_span("hackapizza.maitre.serve_dish") as span:
+                    span.set_attribute("dish", dish)
+                    maitre_agent.run(msg)
+            else:
+                maitre_agent.run(msg)
         except Exception as e:
             log("ERROR", f"maitre (serve) failed: {e}")
 
