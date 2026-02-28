@@ -28,8 +28,9 @@ DATAPIZZA_PROJECT_ID = os.getenv("DATAPIZZA_PROJECT_ID", "")
 DB_PATH = os.getenv("HACKAPIZZA_DB_PATH", "data/hackapizza.db")
 
 # Phase-to-agent mapping for extensibility (MVP: market_broker disabled)
+# Analyst runs in speaking phase AFTER menu_decider_pre_bid to analyze ingredients needed
 PHASE_AGENTS = {
-    "speaking": ["menu_decider_pre_bid"],
+    "speaking": ["menu_decider_pre_bid", "analyst"],
     "closed_bid": ["auction_broker"],
     "waiting": ["menu_decider_post_bid"],
     "serving": ["maitre"],
