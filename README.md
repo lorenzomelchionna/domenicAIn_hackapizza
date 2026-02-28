@@ -52,6 +52,41 @@ domenicAIn_hackapizza/
 └── hackapizza_env/     # Virtual environment (gitignored)
 ```
 
+## Git Flow
+
+We use a simple **Git Flow** workflow for collaborative coding:
+
+| Branch | Purpose |
+|--------|---------|
+| `main` | Production-ready code. Always deployable. |
+| `develop` | Integration branch. Latest changes for the next release. |
+| `feature/*` | New features (e.g. `feature/add-rag-pipeline`). |
+| `fix/*` | Bug fixes (e.g. `fix/agent-timeout`). |
+
+### Workflow
+
+1. **Start work** — Branch from `develop`:
+   ```bash
+   git checkout develop
+   git pull origin develop
+   git checkout -b feature/your-feature-name
+   ```
+
+2. **Commit & push** — Push your branch and open a Pull Request to `develop`:
+   ```bash
+   git add .
+   git commit -m "feat: add your feature"
+   git push origin feature/your-feature-name
+   ```
+
+3. **Merge** — After review, merge the PR into `develop`. Delete the feature branch after merge.
+
+4. **Release** — When ready for production, merge `develop` into `main` and tag the release.
+
+### Commit messages
+
+Use conventional commits: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`.
+
 ## Resources
 
 - [Datapizza AI Documentation](https://docs.datapizza.ai)
