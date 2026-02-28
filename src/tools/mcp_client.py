@@ -56,7 +56,11 @@ class MCPClient:
                 return out
 
         url = f"{self.base_url}/mcp"
-        headers = {"x-api-key": self.api_key, "Content-Type": "application/json"}
+        headers = {
+            "x-api-key": self.api_key,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
         self._request_id += 1
         payload = {
             "jsonrpc": "2.0",
