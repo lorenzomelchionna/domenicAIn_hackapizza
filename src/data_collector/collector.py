@@ -43,18 +43,27 @@ class DataCollector:
         try:
             cursor = conn.cursor()
             for bid in data:
+                # Extract ingredient name from nested object or direct field
+                ingredient = bid.get("ingredient", {})
+                ingredient_name = (
+                    ingredient.get("name", "") if isinstance(ingredient, dict)
+                    else bid.get("ingredient") or bid.get("ingredientName", "")
+                )
+                # Status COMPLETED means won
+                status = bid.get("status", "")
+                won = status == "COMPLETED"
                 cursor.execute(
                     """
                     INSERT INTO bid_history (turn_id, restaurant_id, ingredient, bid_amount, quantity, won)
                     VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        turn_id,
-                        bid.get("restaurant_id") or bid.get("restaurantId"),
-                        bid.get("ingredient") or bid.get("ingredientName"),
-                        bid.get("bid") or bid.get("bid_amount") or bid.get("bidAmount", 0),
+                        bid.get("turnId") or turn_id,
+                        bid.get("restaurantId") or bid.get("restaurant_id"),
+                        ingredient_name,
+                        bid.get("priceForEach") or bid.get("bid") or bid.get("bid_amount", 0),
                         bid.get("quantity", 0),
-                        bid.get("won"),
+                        won,
                     ),
                 )
                 inserted += 1
@@ -78,21 +87,27 @@ class DataCollector:
         try:
             cursor = conn.cursor()
             for meal in data:
-                rid = meal.get("restaurant_id") or meal.get("restaurantId") or restaurant_id or 0
+                rid = meal.get("restaurantId") or meal.get("restaurant_id") or restaurant_id or 0
+                # Extract customer name from nested object
+                customer = meal.get("customer", {})
+                client_name = (
+                    customer.get("name", "") if isinstance(customer, dict)
+                    else meal.get("clientName") or meal.get("client_name", "")
+                )
                 cursor.execute(
                     """
                     INSERT INTO meals (turn_id, restaurant_id, customer_id, client_name, dish_name, price, executed, order_text)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        turn_id,
+                        meal.get("turnId") or turn_id,
                         rid,
                         str(meal.get("customerId") or meal.get("customer_id", "")),
-                        meal.get("clientName") or meal.get("client_name", ""),
-                        meal.get("dishName") or meal.get("dish_name", ""),
+                        client_name,
+                        meal.get("request") or meal.get("dishName") or meal.get("dish_name", ""),
                         meal.get("price"),
-                        meal.get("executed"),
-                        meal.get("orderText") or meal.get("order_text", ""),
+                        meal.get("executed", False),
+                        meal.get("request") or meal.get("orderText") or meal.get("order_text", ""),
                     ),
                 )
                 inserted += 1
@@ -113,6 +128,15 @@ class DataCollector:
             cursor = conn.cursor()
             for entry in data:
                 entry_id = entry.get("id") or entry.get("entry_id") or entry.get("entryId", 0)
+                # Extract ingredient name from nested object or direct field
+                ingredient = entry.get("ingredient", {})
+                ingredient_name = (
+                    ingredient.get("name", "") if isinstance(ingredient, dict)
+                    else entry.get("ingredient_name") or entry.get("ingredientName", "")
+                )
+                # Status: active if not cancelled/executed
+                status = entry.get("status", "")
+                is_active = status not in ("cancelled", "executed")
                 cursor.execute(
                     """
                     INSERT INTO market_entries (entry_id, turn_id, restaurant_id, side, ingredient_name, quantity, price, is_active)
@@ -121,12 +145,12 @@ class DataCollector:
                     (
                         entry_id,
                         turn_id,
-                        entry.get("restaurant_id") or entry.get("restaurantId", 0),
+                        entry.get("createdByRestaurantId") or entry.get("restaurant_id") or entry.get("restaurantId", 0),
                         entry.get("side", ""),
-                        entry.get("ingredient_name") or entry.get("ingredientName", ""),
+                        ingredient_name,
                         entry.get("quantity", 0),
-                        entry.get("price", 0),
-                        entry.get("is_active", True) if "is_active" in entry else True,
+                        entry.get("totalPrice") or entry.get("price", 0),
+                        is_active,
                     ),
                 )
                 inserted += 1

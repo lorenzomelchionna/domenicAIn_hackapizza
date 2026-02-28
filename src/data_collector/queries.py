@@ -155,10 +155,10 @@ def get_competitor_performance(db_path: str | Path) -> list[dict[str, Any]]:
                 rs.turn_id as last_turn
             FROM restaurant_snapshots rs
             INNER JOIN (
-                SELECT restaurant_id, MAX(turn_id) as max_turn
+                SELECT restaurant_id, MAX(id) as max_id
                 FROM restaurant_snapshots
                 GROUP BY restaurant_id
-            ) latest ON rs.restaurant_id = latest.restaurant_id AND rs.turn_id = latest.max_turn
+            ) latest ON rs.id = latest.max_id
             ORDER BY rs.reputation DESC
             """
         )
