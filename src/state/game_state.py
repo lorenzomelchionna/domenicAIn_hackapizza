@@ -33,6 +33,7 @@ class GameState:
             f"Reputation: {self.reputation}",
             f"Inventory: {self.inventory}",
             f"Menu: {self.menu}",
+            f"Recipes: {self.recipes}",
             f"Pending clients: {len(self.pending_clients)}",
             f"Prepared dishes: {self.prepared_dishes}",
         ]
