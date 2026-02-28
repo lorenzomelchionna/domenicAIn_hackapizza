@@ -123,11 +123,62 @@ class DataCollector:
                 FOREIGN KEY (turn_id) REFERENCES turns(turn_id)
             );
 
+            CREATE TABLE IF NOT EXISTS bid_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                turn_id INTEGER NOT NULL,
+                restaurant_id INTEGER NOT NULL,
+                restaurant_name TEXT,
+                ingredient TEXT NOT NULL,
+                ingredient_id INTEGER,
+                bid_price REAL NOT NULL,
+                quantity INTEGER NOT NULL,
+                won INTEGER,
+                timestamp TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS recipes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                preparation_time_ms INTEGER,
+                prestige INTEGER,
+                ingredients_json TEXT,
+                timestamp TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS restaurant_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                turn_id INTEGER NOT NULL,
+                restaurant_id INTEGER NOT NULL,
+                restaurant_name TEXT,
+                balance REAL,
+                reputation REAL,
+                is_open INTEGER,
+                inventory_json TEXT,
+                timestamp TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS meals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                turn_id INTEGER NOT NULL,
+                meal_id INTEGER,
+                restaurant_id INTEGER NOT NULL,
+                customer_id TEXT,
+                customer_name TEXT,
+                order_text TEXT,
+                dish_served TEXT,
+                executed INTEGER,
+                timestamp TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_bids_turn ON bids(turn_id);
             CREATE INDEX IF NOT EXISTS idx_bids_ingredient ON bids(ingredient);
             CREATE INDEX IF NOT EXISTS idx_market_entries_turn ON market_entries(turn_id);
             CREATE INDEX IF NOT EXISTS idx_inventory_turn_phase ON inventory_snapshots(turn_id, phase);
             CREATE INDEX IF NOT EXISTS idx_orders_turn ON orders(turn_id);
+            CREATE INDEX IF NOT EXISTS idx_bid_history_turn ON bid_history(turn_id);
+            CREATE INDEX IF NOT EXISTS idx_bid_history_ingredient ON bid_history(ingredient);
+            CREATE INDEX IF NOT EXISTS idx_restaurant_snapshots_turn ON restaurant_snapshots(turn_id);
+            CREATE INDEX IF NOT EXISTS idx_meals_turn ON meals(turn_id);
         """)
         conn.commit()
 
@@ -360,18 +411,250 @@ class DataCollector:
         turn_id: int,
         restaurant_id: int,
         restaurant_name: str | None,
-        menu_items: list[dict[str, Any]],
+        menu_items: list[dict[str, Any] | str],
     ) -> None:
-        """Record a competitor's menu."""
+        """Record a competitor's menu. Handles both dict and string formats.
+        
+        Replaces any existing menu for the same turn/restaurant to avoid duplicates.
+        """
         conn = self._get_conn()
         timestamp = self._now()
+        # Remove old entries for this turn/restaurant to avoid duplicates from repeated polling
+        conn.execute(
+            "DELETE FROM competitor_menus WHERE turn_id = ? AND restaurant_id = ?",
+            (turn_id, restaurant_id),
+        )
         for item in menu_items:
+            if isinstance(item, str):
+                dish_name = item
+                price = 0
+            elif isinstance(item, dict):
+                dish_name = item.get("name", "")
+                price = item.get("price", 0)
+            else:
+                continue
             conn.execute(
                 """INSERT INTO competitor_menus (turn_id, restaurant_id, restaurant_name, dish_name, price, timestamp)
                    VALUES (?, ?, ?, ?, ?, ?)""",
-                (turn_id, restaurant_id, restaurant_name, item.get("name", ""), item.get("price", 0), timestamp),
+                (turn_id, restaurant_id, restaurant_name, dish_name, price, timestamp),
             )
         conn.commit()
+
+    def record_bid_history(
+        self,
+        turn_id: int,
+        restaurant_id: int,
+        restaurant_name: str | None,
+        ingredient: str,
+        ingredient_id: int | None,
+        bid_price: float,
+        quantity: int,
+        won: bool | None = None,
+    ) -> int:
+        """Record a bid from the bid history endpoint."""
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """INSERT INTO bid_history 
+               (turn_id, restaurant_id, restaurant_name, ingredient, ingredient_id, bid_price, quantity, won, timestamp)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (turn_id, restaurant_id, restaurant_name, ingredient, ingredient_id, bid_price, quantity, won, self._now()),
+        )
+        conn.commit()
+        return cursor.lastrowid or 0
+
+    def record_bid_history_batch(self, turn_id: int, bids: list[dict[str, Any]]) -> int:
+        """Record multiple bids from bid_history endpoint. Returns count of new records.
+        
+        Skips bids already recorded for this turn/restaurant/ingredient to avoid duplicates.
+        """
+        conn = self._get_conn()
+        timestamp = self._now()
+        count = 0
+        for bid in bids:
+            ingredient_data = bid.get("ingredient", {})
+            if isinstance(ingredient_data, dict):
+                ingredient_name = ingredient_data.get("name", "")
+                ingredient_id = ingredient_data.get("id")
+            else:
+                ingredient_name = bid.get("ingredientName", "")
+                ingredient_id = bid.get("ingredientId")
+            
+            restaurant_id = bid.get("restaurantId") or bid.get("restaurant_id")
+            bid_price = bid.get("bid") or bid.get("bidPrice", 0)
+            quantity = bid.get("quantity", 0)
+            
+            # Skip if already recorded
+            existing = conn.execute(
+                """SELECT id FROM bid_history 
+                   WHERE turn_id = ? AND restaurant_id = ? AND ingredient = ? AND bid_price = ? AND quantity = ?""",
+                (turn_id, restaurant_id, ingredient_name, bid_price, quantity),
+            ).fetchone()
+            if existing:
+                continue
+            
+            conn.execute(
+                """INSERT INTO bid_history 
+                   (turn_id, restaurant_id, restaurant_name, ingredient, ingredient_id, bid_price, quantity, won, timestamp)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    turn_id,
+                    restaurant_id,
+                    bid.get("restaurantName") or bid.get("restaurant_name", ""),
+                    ingredient_name,
+                    ingredient_id,
+                    bid_price,
+                    quantity,
+                    bid.get("won"),
+                    timestamp,
+                ),
+            )
+            count += 1
+        conn.commit()
+        return count
+
+    def record_recipe(
+        self,
+        name: str,
+        preparation_time_ms: int | None,
+        prestige: int | None,
+        ingredients: dict[str, int] | None,
+    ) -> None:
+        """Record a recipe. Updates if already exists."""
+        conn = self._get_conn()
+        ingredients_json = json.dumps(ingredients) if ingredients else None
+        conn.execute(
+            """INSERT OR REPLACE INTO recipes (name, preparation_time_ms, prestige, ingredients_json, timestamp)
+               VALUES (?, ?, ?, ?, ?)""",
+            (name, preparation_time_ms, prestige, ingredients_json, self._now()),
+        )
+        conn.commit()
+
+    def record_recipes_batch(self, recipes: list[dict[str, Any]]) -> int:
+        """Record multiple recipes. Returns count of records."""
+        conn = self._get_conn()
+        timestamp = self._now()
+        count = 0
+        for recipe in recipes:
+            ingredients = recipe.get("ingredients", {})
+            ingredients_json = json.dumps(ingredients) if ingredients else None
+            conn.execute(
+                """INSERT OR REPLACE INTO recipes (name, preparation_time_ms, prestige, ingredients_json, timestamp)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (
+                    recipe.get("name", ""),
+                    recipe.get("preparationTimeMs"),
+                    recipe.get("prestige"),
+                    ingredients_json,
+                    timestamp,
+                ),
+            )
+            count += 1
+        conn.commit()
+        return count
+
+    def record_restaurant_snapshot(
+        self,
+        turn_id: int,
+        restaurant_id: int,
+        restaurant_name: str | None,
+        balance: float | None,
+        reputation: float | None,
+        is_open: bool | None,
+        inventory: dict[str, int] | None,
+    ) -> int:
+        """Record a snapshot of a restaurant's state."""
+        conn = self._get_conn()
+        inventory_json = json.dumps(inventory) if inventory else None
+        cursor = conn.execute(
+            """INSERT INTO restaurant_snapshots 
+               (turn_id, restaurant_id, restaurant_name, balance, reputation, is_open, inventory_json, timestamp)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (turn_id, restaurant_id, restaurant_name, balance, reputation, is_open, inventory_json, self._now()),
+        )
+        conn.commit()
+        return cursor.lastrowid or 0
+
+    def record_restaurants_snapshot(self, turn_id: int, restaurants: list[dict[str, Any]]) -> int:
+        """Record snapshots of all restaurants. Returns count of records."""
+        conn = self._get_conn()
+        timestamp = self._now()
+        count = 0
+        for r in restaurants:
+            rid = r.get("id")
+            try:
+                rid = int(rid)
+            except (ValueError, TypeError):
+                pass
+            
+            inventory = r.get("inventory", {})
+            inventory_json = json.dumps(inventory) if inventory else None
+            
+            conn.execute(
+                """INSERT INTO restaurant_snapshots 
+                   (turn_id, restaurant_id, restaurant_name, balance, reputation, is_open, inventory_json, timestamp)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    turn_id,
+                    rid,
+                    r.get("name", ""),
+                    r.get("balance"),
+                    r.get("reputation"),
+                    r.get("isOpen"),
+                    inventory_json,
+                    timestamp,
+                ),
+            )
+            count += 1
+        conn.commit()
+        return count
+
+    def record_meal(
+        self,
+        turn_id: int,
+        meal_id: int | None,
+        restaurant_id: int,
+        customer_id: str | None,
+        customer_name: str | None,
+        order_text: str | None,
+        dish_served: str | None,
+        executed: bool | None,
+    ) -> int:
+        """Record a meal from the meals endpoint."""
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """INSERT INTO meals 
+               (turn_id, meal_id, restaurant_id, customer_id, customer_name, order_text, dish_served, executed, timestamp)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (turn_id, meal_id, restaurant_id, customer_id, customer_name, order_text, dish_served, executed, self._now()),
+        )
+        conn.commit()
+        return cursor.lastrowid or 0
+
+    def record_meals_batch(self, turn_id: int, restaurant_id: int, meals: list[dict[str, Any]]) -> int:
+        """Record multiple meals. Returns count of records."""
+        conn = self._get_conn()
+        timestamp = self._now()
+        count = 0
+        for meal in meals:
+            conn.execute(
+                """INSERT INTO meals 
+                   (turn_id, meal_id, restaurant_id, customer_id, customer_name, order_text, dish_served, executed, timestamp)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    turn_id,
+                    meal.get("id"),
+                    restaurant_id,
+                    str(meal.get("customerId", "")),
+                    meal.get("clientName") or meal.get("customerName", ""),
+                    meal.get("orderText", ""),
+                    meal.get("dishServed") or meal.get("dish_served"),
+                    meal.get("executed"),
+                    timestamp,
+                ),
+            )
+            count += 1
+        conn.commit()
+        return count
 
     def close(self) -> None:
         """Close the database connection."""

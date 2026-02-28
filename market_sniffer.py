@@ -50,9 +50,28 @@ class MarketSniffer:
         self._current_turn = 0
         self._current_phase = "unknown"
         self._seen_entries: set[int] = set()
+        self._poll_count = 0
+        self._total_entries = 0
+        self._total_bids = 0
+
+    # ANSI colors + emoji per tag
+    _TAG_STYLE: dict[str, tuple[str, str]] = {
+        "SNIFFER":     ("\033[1;36m", "🔍"),  # bold cyan
+        "TURN":        ("\033[1;33m", "🔄"),  # bold yellow
+        "PHASE":       ("\033[1;35m", "⏱️"),   # bold magenta
+        "POLL":        ("\033[0;37m", "📡"),   # gray
+        "MARKET":      ("\033[0;32m", "📊"),   # green
+        "AUCTION":     ("\033[0;33m", "🔨"),   # yellow
+        "TRANSACTION": ("\033[0;32m", "💰"),   # green
+        "SSE":         ("\033[0;34m", "📡"),   # blue
+        "ERROR":       ("\033[1;31m", "❌"),   # bold red
+    }
+    _RESET = "\033[0m"
 
     def log(self, tag: str, message: str) -> None:
-        print(f"[{tag}] {datetime.now().strftime('%H:%M:%S')}: {message}")
+        color, emoji = self._TAG_STYLE.get(tag, ("\033[0m", "•"))
+        ts = datetime.now().strftime("%H:%M:%S")
+        print(f"{color}{emoji} [{tag:>11}] {ts}{self._RESET}  {message}", flush=True)
 
     def _get(self, path: str, params: dict | None = None) -> dict | list | None:
         """HTTP GET request to game server."""
@@ -148,6 +167,68 @@ class MarketSniffer:
         # Also record full restaurant snapshots
         if self._current_turn > 0:
             self._collector.record_restaurants_snapshot(self._current_turn, data)
+
+    def _probe_bid_history(self, turn_id: int) -> str:
+        """Probe /bid_history for a turn. Returns 'valid', 'too_old', or 'error' (silent)."""
+        try:
+            url = f"{self.base_url}/bid_history"
+            resp = requests.get(url, headers=self._headers, params={"turn_id": turn_id}, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                return "valid" if isinstance(data, list) else "error"
+            # 400 = "too old" or bad request — parse body
+            try:
+                body = resp.json()
+                if "too old" in body.get("message", ""):
+                    return "too_old"
+            except Exception:
+                pass
+            return "error"
+        except Exception:
+            return "error"
+
+    def _detect_current_turn(self) -> None:
+        """Detect the current turn by probing /bid_history.
+        
+        Uses binary search to find the highest valid turn_id.
+        The API returns 400 'too old' for turns older than current-2,
+        200 with a list for valid turns, and errors for future turns.
+        """
+        if self._current_turn == 0:
+            # Binary search: find the boundary between "too_old" and "valid"/"error"
+            lo, hi = 1, 100
+            best = 0
+            
+            # First: check if turn 1 is too old (game has progressed)
+            r = self._probe_bid_history(1)
+            if r == "valid":
+                best = 1
+            elif r != "too_old":
+                # Turn 1 is error → game hasn't started or no bid history at all
+                return
+            
+            # Binary search for the transition point
+            while lo <= hi:
+                mid = (lo + hi) // 2
+                r = self._probe_bid_history(mid)
+                if r == "too_old":
+                    lo = mid + 1
+                elif r == "valid":
+                    best = mid
+                    lo = mid + 1  # Try higher
+                else:
+                    hi = mid - 1  # Error/future → go lower
+            
+            if best > 0:
+                self._current_turn = best
+                self.log("TURN", f"Detected current turn: {best}")
+        else:
+            # Already have a turn → just check if it advanced
+            result = self._probe_bid_history(self._current_turn + 1)
+            if result == "valid":
+                self._current_turn += 1
+                self._seen_entries.clear()
+                self.log("TURN", f"Turn advanced to {self._current_turn}")
 
     def collect_own_state(self) -> dict[str, Any]:
         """Fetch our restaurant state."""
@@ -306,15 +387,8 @@ class MarketSniffer:
             except aiohttp.ClientResponseError as e:
                 if e.status == 409:
                     self.log("SSE", "409 Conflict - Another SSE session is active (main client running?)")
-                    self.log("SSE", "Switching to HTTP polling only mode")
-                    return  # Exit SSE listener, polling will continue
-                self.log("SSE", f"Connection error: {e}, reconnecting in 5s...")
-                await asyncio.sleep(5)
-            except aiohttp.ClientResponseError as e:
-                if e.status == 409:
-                    self.log("SSE", "Conflict: another SSE session is active. Switching to HTTP-only mode.")
                     self.log("SSE", "Tip: Use --no-sse flag to run alongside the main client.")
-                    return
+                    return  # Exit SSE listener, polling will continue
                 self.log("SSE", f"Connection error: {e}, reconnecting in 5s...")
                 await asyncio.sleep(5)
             except Exception as e:
@@ -348,27 +422,40 @@ class MarketSniffer:
 
     async def polling_task(self) -> None:
         """Periodically poll HTTP endpoints for data."""
-        poll_count = 0
         while self._running:
             try:
+                # Detect turn via bid_history probe (critical for --no-sse mode)
+                if self._poll_count % 3 == 0:
+                    self._detect_current_turn()
+
                 new_entries = self.collect_market_entries()
                 if new_entries > 0:
-                    self.log("POLL", f"Found {new_entries} new market entries")
+                    self._total_entries += new_entries
+                    self.log("MARKET", f"+{new_entries} market entries (total: {self._total_entries})")
 
                 # Collect restaurant data less frequently (every 3 polls)
-                if poll_count % 3 == 0:
+                if self._poll_count % 3 == 0:
                     self.collect_restaurants()
                 
                 # Try to collect bid history if we have a turn
-                if self._current_turn > 0 and poll_count % 5 == 0:
+                new_bids = 0
+                if self._current_turn > 0 and self._poll_count % 5 == 0:
                     try:
-                        bids = self.collect_bid_history()
-                        if bids > 0:
-                            self.log("POLL", f"Recorded {bids} bids from history")
+                        new_bids = self.collect_bid_history()
+                        if new_bids > 0:
+                            self._total_bids += new_bids
+                            self.log("MARKET", f"+{new_bids} bids from history (total: {self._total_bids})")
                     except Exception:
                         pass
+
+                # Periodic status summary (every 10 polls = ~100s)
+                if self._poll_count > 0 and self._poll_count % 10 == 0:
+                    self.log("SNIFFER",
+                        f"status: turn={self._current_turn} phase={self._current_phase} "
+                        f"entries={self._total_entries} bids={self._total_bids} "
+                        f"polls={self._poll_count}")
                 
-                poll_count += 1
+                self._poll_count += 1
 
             except Exception as e:
                 self.log("ERROR", f"Polling failed: {e}")
@@ -378,26 +465,29 @@ class MarketSniffer:
     async def run(self, use_sse: bool = True) -> None:
         """Run the sniffer."""
         self._running = True
-        self.log("SNIFFER", f"Starting market sniffer (poll interval: {self.poll_interval}s)")
-        self.log("SNIFFER", f"Database: {self._collector.db_path}")
+        mode = "SSE + polling" if use_sse else "polling only"
+
+        print(f"\n\033[1;36m{'═'*55}")
+        print(f"  🍕 HACKAPIZZA MARKET SNIFFER")
+        print(f"{'═'*55}\033[0m")
+        print(f"  Team ID:    {self.team_id}")
+        print(f"  Database:   {self._collector.db_path}")
+        print(f"  Mode:       {mode}")
+        print(f"  Interval:   {self.poll_interval}s")
+        print(f"\033[1;36m{'═'*55}\033[0m\n", flush=True)
 
         # Initial data collection
         self.log("SNIFFER", "Collecting initial data...")
-        
-        # Collect recipes (one-time, they don't change)
         recipe_count = self.collect_recipes()
-        self.log("SNIFFER", f"Collected {recipe_count} recipes")
-        
-        # Collect current market state
         entry_count = self.collect_market_entries()
-        self.log("SNIFFER", f"Collected {entry_count} market entries")
-        
-        # Collect restaurant states
+        self._total_entries = entry_count
         self.collect_restaurants()
-        self.log("SNIFFER", "Collected restaurant states")
-        
-        # Collect own state
         self.collect_own_state()
+        self._detect_current_turn()
+
+        self.log("SNIFFER",
+            f"Ready! recipes={recipe_count} entries={entry_count} "
+            f"turn={self._current_turn} — polling every {self.poll_interval}s")
 
         tasks = [asyncio.create_task(self.polling_task())]
         if use_sse:
@@ -410,7 +500,9 @@ class MarketSniffer:
         finally:
             self._running = False
             self._collector.close()
-            self.log("SNIFFER", "Stopped")
+            self.log("SNIFFER",
+                f"Stopped. Total: entries={self._total_entries} bids={self._total_bids} "
+                f"polls={self._poll_count}")
 
     def stop(self) -> None:
         """Signal the sniffer to stop."""

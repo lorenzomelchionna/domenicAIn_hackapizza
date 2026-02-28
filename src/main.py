@@ -64,6 +64,17 @@ async def main() -> None:
             except Exception as e:
                 log("MONITOR", f"write failed: {e}")
 
+    async def market_polling_task() -> None:
+        """Background task: poll market & restaurants periodically during active turns."""
+        while True:
+            await asyncio.sleep(15)
+            try:
+                if state.turn_id > 0 and state.phase not in ("stopped",):
+                    state_updater.refresh_market(state)
+                    state_updater.refresh_restaurants(state)
+            except Exception as e:
+                log("POLL", f"market poll failed: {e}")
+
     def run_turn_start() -> None:
         """Called on game_started (= speaking phase). Open restaurant, refresh state, run pre-bid."""
         # 1. Open restaurant (hardcoded, no LLM dependency)
@@ -184,6 +195,8 @@ async def main() -> None:
                 log("EVENT", "game reset")
                 append_event("EVENT", "game reset")
             elif event_type == "game_ended" or event_type == "turn_ended":
+                # Collect bid history before closing the turn
+                state_updater.collect_bid_history(state)
                 # Record turn end for data collection
                 state_updater.refresh_restaurant(state)
                 data_collector.record_turn_end(state.turn_id, state.balance, state.reputation)
@@ -205,20 +218,19 @@ async def main() -> None:
 
     processor = asyncio.create_task(process_events())
     writer = asyncio.create_task(state_writer_task())
+    poller = asyncio.create_task(market_polling_task())
     try:
         await listen(BASE_URL, TEAM_API_KEY, TEAM_ID, dispatch)
     finally:
         processor.cancel()
         writer.cancel()
+        poller.cancel()
         data_collector.close()
-        try:
-            await processor
-        except asyncio.CancelledError:
-            pass
-        try:
-            await writer
-        except asyncio.CancelledError:
-            pass
+        for t in (processor, writer, poller):
+            try:
+                await t
+            except asyncio.CancelledError:
+                pass
 
 
 if __name__ == "__main__":

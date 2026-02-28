@@ -55,12 +55,27 @@ class DataAnalyzer:
             self._conn.row_factory = sqlite3.Row
         return self._conn
 
-    def get_winning_bid_stats(self, ingredient: str | None = None) -> list[BidStats]:
-        """Get statistics on winning bids, optionally filtered by ingredient."""
+    def get_current_turn(self) -> int:
+        """Get the latest turn_id in the database."""
         conn = self._get_conn()
+        row = conn.execute("SELECT MAX(turn_id) as max_turn FROM turns").fetchone()
+        return (row["max_turn"] or 0) if row else 0
+
+    def _turn_filter(self, last_n_turns: int | None) -> str:
+        """Generate SQL clause for turn filtering."""
+        if last_n_turns is None:
+            return ""
+        return f"AND turn_id >= (SELECT MAX(turn_id) - {last_n_turns} FROM turns)"
+
+    def get_winning_bid_stats(
+        self, ingredient: str | None = None, last_n_turns: int | None = None
+    ) -> list[BidStats]:
+        """Get statistics on winning bids, optionally filtered by ingredient and time window."""
+        conn = self._get_conn()
+        turn_filter = self._turn_filter(last_n_turns)
         
         if ingredient:
-            query = """
+            query = f"""
                 SELECT 
                     ingredient,
                     COUNT(*) as total_bids,
@@ -71,12 +86,12 @@ class DataAnalyzer:
                     MIN(CASE WHEN won = 1 THEN winning_price END) as min_winning_price,
                     MAX(CASE WHEN won = 1 THEN winning_price END) as max_winning_price
                 FROM bids
-                WHERE ingredient = ?
+                WHERE ingredient = ? {turn_filter}
                 GROUP BY ingredient
             """
             rows = conn.execute(query, (ingredient,)).fetchall()
         else:
-            query = """
+            query = f"""
                 SELECT 
                     ingredient,
                     COUNT(*) as total_bids,
@@ -87,6 +102,7 @@ class DataAnalyzer:
                     MIN(CASE WHEN won = 1 THEN winning_price END) as min_winning_price,
                     MAX(CASE WHEN won = 1 THEN winning_price END) as max_winning_price
                 FROM bids
+                WHERE 1=1 {turn_filter}
                 GROUP BY ingredient
                 ORDER BY total_bids DESC
             """
@@ -109,13 +125,16 @@ class DataAnalyzer:
             ))
         return results
 
-    def get_recommended_bid_price(self, ingredient: str, percentile: float = 0.75) -> float | None:
+    def get_recommended_bid_price(
+        self, ingredient: str, percentile: float = 0.75, last_n_turns: int | None = None
+    ) -> float | None:
         """Get recommended bid price based on historical winning prices."""
         conn = self._get_conn()
-        query = """
+        turn_filter = self._turn_filter(last_n_turns)
+        query = f"""
             SELECT winning_price
             FROM bids
-            WHERE ingredient = ? AND won = 1 AND winning_price IS NOT NULL
+            WHERE ingredient = ? AND won = 1 AND winning_price IS NOT NULL {turn_filter}
             ORDER BY winning_price
         """
         rows = conn.execute(query, (ingredient,)).fetchall()
@@ -156,10 +175,11 @@ class DataAnalyzer:
             for row in rows
         ]
 
-    def get_market_opportunities(self) -> list[MarketOpportunity]:
+    def get_market_opportunities(self, last_n_turns: int | None = None) -> list[MarketOpportunity]:
         """Identify profitable market trading patterns."""
         conn = self._get_conn()
-        query = """
+        turn_filter = self._turn_filter(last_n_turns)
+        query = f"""
             SELECT 
                 ingredient,
                 AVG(CASE WHEN side = 'BUY' THEN price END) as avg_buy_price,
@@ -167,7 +187,7 @@ class DataAnalyzer:
                 SUM(CASE WHEN side = 'BUY' THEN quantity ELSE 0 END) as buy_volume,
                 SUM(CASE WHEN side = 'SELL' THEN quantity ELSE 0 END) as sell_volume
             FROM market_entries
-            WHERE our_entry = 0
+            WHERE our_entry = 0 {turn_filter}
             GROUP BY ingredient
             HAVING avg_buy_price IS NOT NULL AND avg_sell_price IS NOT NULL
             ORDER BY (avg_buy_price - avg_sell_price) DESC
@@ -225,20 +245,127 @@ class DataAnalyzer:
         turn_ids = [row["turn_id"] for row in conn.execute("SELECT turn_id FROM turns ORDER BY turn_id").fetchall()]
         return [self.get_turn_summary(tid) for tid in turn_ids]
 
-    def get_ingredient_demand(self) -> list[dict[str, Any]]:
+    def get_ingredient_demand(self, last_n_turns: int | None = None) -> list[dict[str, Any]]:
         """Analyze ingredient demand based on bids and menu usage."""
         conn = self._get_conn()
-        query = """
+        turn_filter = self._turn_filter(last_n_turns)
+        query = f"""
             SELECT 
                 ingredient,
                 COUNT(*) as bid_count,
                 SUM(quantity) as total_quantity_bid,
                 AVG(bid_price) as avg_bid_price
             FROM bids
+            WHERE 1=1 {turn_filter}
             GROUP BY ingredient
             ORDER BY bid_count DESC
         """
         return [dict(row) for row in conn.execute(query).fetchall()]
+
+    def get_hot_ingredients(self, last_n_turns: int = 3, limit: int = 10) -> list[dict[str, Any]]:
+        """Get most contested ingredients based on bid_history (all restaurants)."""
+        conn = self._get_conn()
+        query = """
+            SELECT 
+                ingredient,
+                COUNT(*) as bid_count,
+                COUNT(DISTINCT restaurant_id) as num_bidders,
+                AVG(bid_price) as avg_bid_price,
+                MAX(bid_price) as max_bid_price
+            FROM bid_history
+            WHERE turn_id >= (SELECT COALESCE(MAX(turn_id), 0) - ? FROM turns)
+            GROUP BY ingredient
+            ORDER BY num_bidders DESC, bid_count DESC
+            LIMIT ?
+        """
+        return [dict(row) for row in conn.execute(query, (last_n_turns, limit)).fetchall()]
+
+    def get_competitor_budgets(self, turn_id: int | None = None) -> list[dict[str, Any]]:
+        """Get latest balance and reputation for all restaurants."""
+        conn = self._get_conn()
+        if turn_id is None:
+            turn_id = self.get_current_turn()
+        query = """
+            SELECT 
+                restaurant_id,
+                restaurant_name,
+                balance,
+                reputation,
+                is_open
+            FROM restaurant_snapshots
+            WHERE turn_id = ?
+            ORDER BY balance DESC
+        """
+        return [dict(row) for row in conn.execute(query, (turn_id,)).fetchall()]
+
+    def get_current_market_spread(self, turn_id: int | None = None) -> list[dict[str, Any]]:
+        """Get current BUY/SELL spread for each ingredient (non-executed entries only)."""
+        conn = self._get_conn()
+        if turn_id is None:
+            turn_id = self.get_current_turn()
+        query = """
+            SELECT 
+                ingredient,
+                MIN(CASE WHEN side = 'SELL' THEN price END) as best_sell_price,
+                MAX(CASE WHEN side = 'BUY' THEN price END) as best_buy_price,
+                SUM(CASE WHEN side = 'SELL' THEN quantity ELSE 0 END) as sell_volume,
+                SUM(CASE WHEN side = 'BUY' THEN quantity ELSE 0 END) as buy_volume
+            FROM market_entries
+            WHERE turn_id = ? AND executed = 0 AND our_entry = 0
+            GROUP BY ingredient
+            HAVING best_sell_price IS NOT NULL OR best_buy_price IS NOT NULL
+            ORDER BY ingredient
+        """
+        results = []
+        for row in conn.execute(query, (turn_id,)).fetchall():
+            d = dict(row)
+            best_sell = d.get("best_sell_price")
+            best_buy = d.get("best_buy_price")
+            if best_sell is not None and best_buy is not None:
+                d["spread"] = best_sell - best_buy
+                d["arbitrage_opportunity"] = best_buy > best_sell
+            else:
+                d["spread"] = None
+                d["arbitrage_opportunity"] = False
+            results.append(d)
+        return results
+
+    def get_auction_price_history(
+        self, ingredient: str, last_n_turns: int = 5
+    ) -> list[dict[str, Any]]:
+        """Get winning auction prices for an ingredient over recent turns."""
+        conn = self._get_conn()
+        query = """
+            SELECT 
+                turn_id,
+                AVG(bid_price) as avg_winning_bid,
+                MIN(bid_price) as min_winning_bid,
+                MAX(bid_price) as max_winning_bid,
+                COUNT(*) as num_winners
+            FROM bid_history
+            WHERE ingredient = ? 
+              AND won = 1
+              AND turn_id >= (SELECT COALESCE(MAX(turn_id), 0) - ? FROM turns)
+            GROUP BY turn_id
+            ORDER BY turn_id DESC
+        """
+        return [dict(row) for row in conn.execute(query, (ingredient, last_n_turns)).fetchall()]
+
+    def get_recipes_list(self) -> list[dict[str, Any]]:
+        """Get all recipes with their ingredients."""
+        conn = self._get_conn()
+        import json
+        query = "SELECT name, prestige, preparation_time_ms, ingredients_json FROM recipes ORDER BY prestige DESC"
+        results = []
+        for row in conn.execute(query).fetchall():
+            d = {
+                "name": row["name"],
+                "prestige": row["prestige"],
+                "preparation_time_ms": row["preparation_time_ms"],
+                "ingredients": json.loads(row["ingredients_json"]) if row["ingredients_json"] else {},
+            }
+            results.append(d)
+        return results
 
     def export_to_csv(self, table: str, path: str | Path) -> int:
         """Export a table to CSV. Returns number of rows exported."""
