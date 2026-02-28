@@ -59,7 +59,7 @@ class MCPClient:
         headers = {
             "x-api-key": self.api_key,
             "Content-Type": "application/json",
-            "Accept": "application/json",
+            "Accept": "application/json, text/event-stream, */*",
         }
         self._request_id += 1
         payload = {
