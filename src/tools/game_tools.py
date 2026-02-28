@@ -103,6 +103,70 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         state = state_getter()
         return json.dumps(state.draft_menu, ensure_ascii=False)
 
+    @tool
+    def save_suggested_bids(suggested_bids: list[dict[str, Any]]) -> str:
+        """Save analyst output: suggested bid per unit for each ingredient.
+        Input: [{\"ingredient\": str, \"price\": float}, ...].
+        The analyst calls this after analyzing the market. The broker will use these for bidding."""
+        if state_getter is None:
+            return "Error: state_getter not configured"
+        if not isinstance(suggested_bids, list):
+            return "Error: suggested_bids must be a list"
+        state = state_getter()
+        parsed: list[tuple[str, float]] = []
+        for item in suggested_bids:
+            if isinstance(item, dict):
+                ing = item.get("ingredient")
+                price = item.get("price")
+                if ing is not None and price is not None:
+                    parsed.append((str(ing), float(price)))
+        state.suggested_bids = parsed
+        return f"Suggested bids saved for {len(parsed)} ingredients: {[p[0] for p in parsed]}"
+
+    @tool
+    def get_suggested_bids() -> str:
+        """Get analyst suggested bids: [(ingredient, price_per_unit), ...].
+        Use these as bidding prices when available. If empty, fall back to static strategy."""
+        if state_getter is None:
+            return json.dumps({"error": "state_getter not configured"})
+        state = state_getter()
+        # Return as list of dicts for JSON
+        data = [{"ingredient": ing, "price": price} for ing, price in state.suggested_bids]
+        return json.dumps(data, ensure_ascii=False)
+
+    @tool
+    def save_actual_bids(actual_bids: list[dict[str, Any]]) -> str:
+        """Save auction results: actual prices and success status per ingredient.
+        Input: [{\"ingredient\": str, \"price\": float, \"success\": bool}, ...].
+        Call this AFTER closed_bid. Parse the closed_bid response: price = actual paid per unit, success = whether purchase went through."""
+        if state_getter is None:
+            return "Error: state_getter not configured"
+        if not isinstance(actual_bids, list):
+            return "Error: actual_bids must be a list"
+        state = state_getter()
+        parsed: list[dict[str, Any]] = []
+        for item in actual_bids:
+            if isinstance(item, dict):
+                ing = item.get("ingredient")
+                price = item.get("price")
+                success = item.get("success")
+                if ing is not None:
+                    parsed.append({
+                        "ingredient": str(ing),
+                        "price": float(price) if price is not None else 0.0,
+                        "success": bool(success) if success is not None else False,
+                    })
+        state.actual_bids = parsed
+        return f"Actual bids saved for {len(parsed)} ingredients: {[p['ingredient'] for p in parsed]}"
+
+    @tool
+    def get_actual_bids() -> str:
+        """Get auction results: [{ingredient, price, success}, ...]. Use for analytics or learning."""
+        if state_getter is None:
+            return json.dumps({"error": "state_getter not configured"})
+        state = state_getter()
+        return json.dumps(state.actual_bids, ensure_ascii=False)
+
     all_tools = [
         closed_bid,
         save_menu,
@@ -117,6 +181,10 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         get_inventory,
         save_draft_menu,
         get_draft_menu,
+        save_suggested_bids,
+        get_suggested_bids,
+        save_actual_bids,
+        get_actual_bids,
     ]
     by_name = {t.__name__: t for t in all_tools}
     return all_tools, by_name

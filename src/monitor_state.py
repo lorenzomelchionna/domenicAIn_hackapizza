@@ -30,6 +30,9 @@ def _state_to_dict(state: "GameState") -> dict[str, Any]:
         "market_entries": state.market_entries,
         "is_open": state.is_open,
         "restaurants_count": len(state.restaurants),
+        "draft_menu": state.draft_menu,
+        "suggested_bids": [{"ingredient": ing, "price": p} for ing, p in state.suggested_bids],
+        "actual_bids": state.actual_bids,
     }
 
 
