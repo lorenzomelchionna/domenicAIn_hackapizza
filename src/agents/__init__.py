@@ -75,7 +75,9 @@ def create_all_agents(client, mcp_client, phase_getter, state_getter=None, db_pa
         maitre,
     ]
     
- 
+    # Filter out None agents (e.g., analyst when db_path not provided)
+    sub_agents = [a for a in sub_agents if a is not None]
+    
     restaurant_manager = create_restaurant_manager(client, sub_agents, [tools_by_name["update_restaurant_is_open"]])
 
     return restaurant_manager, sub_agents

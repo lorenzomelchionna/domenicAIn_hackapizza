@@ -38,7 +38,7 @@ async def main() -> None:
     def state_getter():
         return state
 
-    restaurant_manager, sub_agents = create_all_agents(client, mcp_client, phase_getter, state_getter)
+    restaurant_manager, sub_agents = create_all_agents(client, mcp_client, phase_getter, state_getter, db_path=DB_PATH)
     maitre_agent = next(a for a in sub_agents if a.name == "maitre")
 
     event_queue: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue()
