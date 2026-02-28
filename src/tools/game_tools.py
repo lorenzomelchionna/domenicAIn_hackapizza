@@ -82,22 +82,17 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         return json.dumps(state.inventory, ensure_ascii=False)
 
     @tool
-    def save_draft_menu(draft_json: str) -> str:
+    def save_draft_menu(items: list[dict[str, Any]]) -> str:
         """Save the draft menu (selected recipes for this turn) to shared state.
-        Input must be a JSON string: a list of objects with 'name' and 'ingredients' keys.
-        Example: '[{"name": "RecipeName", "ingredients": [{"name": "Ing1", "quantity": 2}]}]'
+        Items is a list of recipe objects: [{name: str, ingredients: [{name: str, quantity: int}]}].
         This does NOT publish the menu to the game server — it only saves the draft locally."""
         if state_getter is None:
             return "Error: state_getter not configured"
-        try:
-            draft = json.loads(draft_json)
-            if not isinstance(draft, list):
-                return "Error: draft must be a JSON list"
-            state = state_getter()
-            state.draft_menu = draft
-            return f"Draft menu saved with {len(draft)} recipes: {[r.get('name', '?') for r in draft]}"
-        except json.JSONDecodeError as e:
-            return f"Error parsing JSON: {e}"
+        if not isinstance(items, list):
+            return "Error: items must be a list"
+        state = state_getter()
+        state.draft_menu = items
+        return f"Draft menu saved with {len(items)} recipes: {[r.get('name', '?') for r in items]}"
 
     @tool
     def get_draft_menu() -> str:
