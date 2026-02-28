@@ -15,6 +15,7 @@ Your job is to finalize the restaurant menu with PROFITABLE prices.
 
 ## PRICING STRATEGY (CRITICAL — must generate profit):
 - Estimate the cost of each dish: sum up (bid_price x quantity) for its ingredients.
+  If you don't have bid_price, assume 200 for ingredient.
 - Set the selling price ABOVE the estimated cost. Aim for at least 30-50% markup.
 - Higher prestige recipes can command higher prices.
 - Example: if a dish costs ~20 in ingredients, price it at 28-35.
