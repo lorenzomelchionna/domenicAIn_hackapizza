@@ -58,15 +58,33 @@ async def main() -> None:
             except Exception as e:
                 log("MONITOR", f"write failed: {e}")
 
+    def run_turn_start() -> None:
+        """Called on game_started (= speaking phase). Open restaurant, refresh state, run pre-bid."""
+        # 1. Open restaurant (hardcoded, no LLM dependency)
+        try:
+            result = mcp_client.call("update_restaurant_is_open", {"is_open": True})
+            log("AGENT", f"restaurant opened: {result}")
+        except Exception as e:
+            log("ERROR", f"failed to open restaurant: {e}")
+        # 2. Refresh state for the new turn
+        state_updater.refresh_restaurant(state)
+        state_updater.refresh_restaurants(state)
+        # 3. Run orchestrator for speaking/pre-bid
+        ctx = state.summary()
+        msg = f"Current phase: speaking. Execute phase-specific tasks.\n\nContext:\n{ctx}"
+        try:
+            resp = restaurant_manager.run(msg)
+            log("AGENT", f"orchestrator response (speaking): {resp.text[:200] if resp and resp.text else 'ok'}")
+            append_event("AGENT", "orchestrator phase=speaking", {"response_preview": (resp.text[:150] if resp and resp.text else "ok")})
+        except Exception as e:
+            log("ERROR", f"orchestrator failed (speaking): {e}")
+            append_event("ERROR", f"orchestrator failed (speaking): {e}")
+
     def run_orchestrator_for_phase(phase: str) -> None:
+        """Called on phase changes (closed_bid, waiting, serving). NOT for speaking — that's in run_turn_start."""
         state_updater.refresh_restaurant(state)
         if phase in ("waiting", "closed_bid"):
             state_updater.refresh_meals(state)
-        # Market refresh disabled for MVP (Market Broker inactive)
-        # if phase != "stopped":
-        #     state_updater.refresh_market(state)
-        if phase == "speaking":
-            state_updater.refresh_restaurants(state)
         ctx = state.summary()
         msg = f"Current phase: {phase}. Execute phase-specific tasks.\n\nContext:\n{ctx}"
         try:
@@ -117,15 +135,19 @@ async def main() -> None:
             event_type, event_data = await event_queue.get()
             if event_type == "game_started":
                 state.turn_id = event_data.get("turn_id", 0)
+                state.phase = "speaking"
                 state_updater.refresh_recipes(state)
                 log("EVENT", f"game started turn_id={state.turn_id}")
                 append_event("EVENT", "game_started", {"turn_id": state.turn_id})
+                # speaking phase work happens here (open restaurant + pre-bid)
+                await asyncio.get_event_loop().run_in_executor(None, run_turn_start)
             elif event_type == "game_phase_changed":
                 phase = event_data.get("phase", "unknown")
                 state.phase = phase
                 log("EVENT", f"phase -> {phase}")
                 append_event("EVENT", f"phase -> {phase}", {"phase": phase})
-                if phase != "stopped":
+                if phase not in ("stopped", "speaking"):
+                    # speaking is handled in game_started above
                     await asyncio.get_event_loop().run_in_executor(None, run_orchestrator_for_phase, phase)
             elif event_type == "client_spawned":
                 log("EVENT", f"client={event_data.get('clientName')} order={event_data.get('orderText')}")

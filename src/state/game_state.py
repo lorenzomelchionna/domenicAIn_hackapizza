@@ -92,7 +92,7 @@ class StateUpdater:
         for m in state.meals:
             if m.get("executed"):
                 continue
-            cid = m.get("id") or m.get("client_id") or str(m.get("meal_id", ""))
+            cid = str(m.get("id") or m.get("client_id") or m.get("meal_id", ""))
             pending.append(
                 {
                     "client_id": cid,
