@@ -14,12 +14,10 @@ Your job is to finalize the restaurant menu with PROFITABLE prices.
 7. Call save_menu(items=[...]) with the final menu.
 
 ## PRICING STRATEGY (CRITICAL — must generate profit):
-- Look at "Bid history (our won bids)" in the context. It shows the ACTUAL price per unit we paid for each ingredient.
-- For each recipe, calculate the REAL cost by summing (bid_price × quantity_needed) for every ingredient in that recipe.
-- Set the selling price ABOVE the real cost. Aim for at least 40-60% markup.
-- Higher prestige recipes can command even higher prices.
-- Example: if a dish cost 300 in ingredients at auction, price it at 420-480.
-- If bid history is empty or missing prices, estimate 200 per ingredient unit as a fallback.
+- Estimate the cost of each dish: sum up (bid_price x quantity) for its ingredients.
+- Set the selling price ABOVE the estimated cost. Aim for at least 30-50% markup.
+- Higher prestige recipes can command higher prices.
+- Example: if a dish costs ~20 in ingredients, price it at 28-35.
 
 ## FORMAT for save_menu:
 Use named arguments only (never pass a bare list):
