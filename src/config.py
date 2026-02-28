@@ -17,6 +17,14 @@ REGOLO_API_KEY = os.getenv("REGOLO_API_KEY", "")
 REGOLO_MODEL = os.getenv("REGOLO_MODEL", "gpt-oss-120b")
 REGOLO_BASE_URL = "https://api.regolo.ai/v1"
 
+# Datapizza Monitoring (optional, OTLP tracing)
+DATAPIZZA_OTLP_ENDPOINT = os.getenv(
+    "DATAPIZZA_OTLP_ENDPOINT",
+    "https://datapizza-monitoring.datapizza.tech/gateway/v1/traces",
+)
+DATAPIZZA_MONITORING_API_KEY = os.getenv("DATAPIZZA_MONITORING_API_KEY", "")
+DATAPIZZA_PROJECT_ID = os.getenv("DATAPIZZA_PROJECT_ID", "")
+
 # Phase-to-agent mapping for extensibility (MVP: market_broker disabled)
 PHASE_AGENTS = {
     "speaking": ["menu_decider_pre_bid"],
