@@ -24,6 +24,12 @@ class GameState:
     prepared_dishes: list[tuple[str, str]] = field(default_factory=list)  # (dish_name, client_id)
     draft_menu: list[dict[str, Any]] = field(default_factory=list)
     is_open: bool = True
+    # Analyst output: suggested bid per unit for each ingredient. [(ingredient, price), ...]
+    # Populated by the analyst (pre-bid → closed_bid). Broker uses these for bidding.
+    suggested_bids: list[tuple[str, float]] = field(default_factory=list)
+    # Broker output: actual auction results. [{ingredient, price, success}, ...]
+    # Populated by the broker after closed_bid. Price = actual paid per unit; success = whether purchase went through.
+    actual_bids: list[dict[str, Any]] = field(default_factory=list)
 
     def summary(self) -> str:
         """Produce a concise context string for agents."""
@@ -36,6 +42,8 @@ class GameState:
             f"Menu: {self.menu}",
             f"Draft menu: {self.draft_menu}",
             #f"Recipes: {self.recipes}",
+            f"Suggested bids (ingredient -> price/unit): {dict(self.suggested_bids) if self.suggested_bids else 'none'}",
+            f"Actual bids (auction results): {self.actual_bids if self.actual_bids else 'none'}",
             f"Pending clients: {self.pending_clients}",
             f"Prepared dishes: {self.prepared_dishes}",
         ]

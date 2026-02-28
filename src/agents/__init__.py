@@ -23,7 +23,12 @@ def create_all_agents(client, mcp_client, phase_getter, state_getter=None):
         client,
         [tools_by_name["save_menu"], tools_by_name["get_recipes"], tools_by_name["get_inventory"], tools_by_name["get_draft_menu"]],
     )
-    auction_broker = create_auction_broker(client, [tools_by_name["closed_bid"], tools_by_name["get_draft_menu"]])
+    auction_broker = create_auction_broker(client, [
+        tools_by_name["closed_bid"],
+        tools_by_name["get_draft_menu"],
+        tools_by_name["get_suggested_bids"],
+        tools_by_name["save_actual_bids"],
+    ])
     market_broker = create_market_broker(
         client,
         [
