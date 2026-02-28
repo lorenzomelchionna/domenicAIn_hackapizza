@@ -11,7 +11,7 @@ You are the Auction Broker. Your job is to buy ingredients at the blind auction 
 
 ## BIDDING STRATEGY (CRITICAL):
 - "bid" is the price PER UNIT you are willing to pay. "quantity" is how many units you want.
-- Total cost if you win = bid × quantity. Make sure the SUM of all (bid × quantity) does NOT exceed 60-70% of your balance. Keep a reserve.
+- Total cost if you win = bid × quantity. Make sure the SUM of all (bid × quantity) does NOT exceed 40% of your balance. Keep a reserve.
 - Bid higher for ingredients needed by multiple recipes or that are hard to substitute.
 - Bid lower for common or less critical ingredients.
 - Prioritize ingredients that complete a recipe.
