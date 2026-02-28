@@ -81,6 +81,28 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         state = state_getter()
         return json.dumps(state.inventory, ensure_ascii=False)
 
+    @tool
+    def save_draft_menu(items: list[dict[str, Any]]) -> str:
+        """Save the draft menu (selected recipes for this turn) to shared state.
+        Items is a list of recipe objects: [{name: str, ingredients: [{name: str, quantity: int}]}].
+        This does NOT publish the menu to the game server — it only saves the draft locally."""
+        if state_getter is None:
+            return "Error: state_getter not configured"
+        if not isinstance(items, list):
+            return "Error: items must be a list"
+        state = state_getter()
+        state.draft_menu = items
+        return f"Draft menu saved with {len(items)} recipes: {[r.get('name', '?') for r in items]}"
+
+    @tool
+    def get_draft_menu() -> str:
+        """Get the current draft menu from shared state. Returns a JSON list of selected recipes
+        with their ingredients. Use this to know which dishes were chosen by the Menu Decider Pre-Bid."""
+        if state_getter is None:
+            return json.dumps({"error": "state_getter not configured"})
+        state = state_getter()
+        return json.dumps(state.draft_menu, ensure_ascii=False)
+
     all_tools = [
         closed_bid,
         save_menu,
@@ -93,6 +115,9 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         send_message,
         get_recipes,
         get_inventory,
+        save_draft_menu,
+        get_draft_menu,
     ]
     by_name = {t.__name__: t for t in all_tools}
     return all_tools, by_name
+

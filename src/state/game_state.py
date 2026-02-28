@@ -22,6 +22,7 @@ class GameState:
     market_entries: list[dict[str, Any]] = field(default_factory=list)
     pending_clients: list[dict[str, Any]] = field(default_factory=list)
     prepared_dishes: list[tuple[str, str]] = field(default_factory=list)  # (dish_name, client_id)
+    draft_menu: list[dict[str, Any]] = field(default_factory=list)
     is_open: bool = True
 
     def summary(self) -> str:
@@ -33,8 +34,9 @@ class GameState:
             f"Reputation: {self.reputation}",
             f"Inventory: {self.inventory}",
             f"Menu: {self.menu}",
+            f"Draft menu: {self.draft_menu}",
             f"Recipes: {self.recipes[:10]}",
-            f"Pending clients: {len(self.pending_clients)}",
+            f"Pending clients: {self.pending_clients}",
             f"Prepared dishes: {self.prepared_dishes}",
         ]
         return "\n".join(parts)
@@ -90,7 +92,7 @@ class StateUpdater:
         for m in state.meals:
             if m.get("executed"):
                 continue
-            cid = m.get("id") or m.get("client_id") or str(m.get("meal_id", ""))
+            cid = str(m.get("customerId"))
             pending.append(
                 {
                     "client_id": cid,

@@ -17,12 +17,12 @@ REGOLO_API_KEY = os.getenv("REGOLO_API_KEY", "")
 REGOLO_MODEL = os.getenv("REGOLO_MODEL", "gpt-oss-120b")
 REGOLO_BASE_URL = "https://api.regolo.ai/v1"
 
-# Phase-to-agent mapping for extensibility
+# Phase-to-agent mapping for extensibility (MVP: market_broker disabled)
 PHASE_AGENTS = {
-    "speaking": ["diplomatico", "menu_decider_pre_bid", "market_broker"],
-    "closed_bid": ["menu_decider_pre_bid", "auction_broker", "market_broker"],
-    "waiting": ["menu_decider_post_bid", "market_broker"],
-    "serving": ["maitre", "market_broker"],
+    "speaking": ["menu_decider_pre_bid"],
+    "closed_bid": ["auction_broker"],
+    "waiting": ["menu_decider_post_bid"],
+    "serving": ["maitre"],
     "stopped": [],
 }
 
