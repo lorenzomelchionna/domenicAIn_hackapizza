@@ -3,6 +3,8 @@ from typing import Any, Callable
 
 import requests
 
+from src.logging_config import get_mcp_logger, log_mcp_input, log_mcp_output
+
 # Phase-to-tool allowlist (tools allowed per phase)
 TOOL_PHASES: dict[str, list[str]] = {
     "save_menu": ["speaking", "closed_bid", "waiting"],
@@ -30,21 +32,28 @@ class MCPClient:
         return self._phase_getter()
 
     def _call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        mcp_logger = get_mcp_logger()
+        log_mcp_input(mcp_logger, name, arguments)
+
         phase = self._get_phase()
         allowed = TOOL_PHASES.get(name, [])
         if allowed and phase not in allowed:
-            return {
+            out = {
                 "isError": True,
                 "content": [{"type": "text", "text": f"Tool {name} not allowed in phase {phase}. Allowed phases: {allowed}"}],
             }
+            log_mcp_output(mcp_logger, name, out["content"][0]["text"], is_error=True)
+            return out
 
         # update_restaurant_is_open: in serving, only close (is_open=false) allowed
         if name == "update_restaurant_is_open" and phase == "serving":
             if arguments.get("is_open", True):
-                return {
+                out = {
                     "isError": True,
                     "content": [{"type": "text", "text": "In serving phase, can only close (is_open=false), not reopen."}],
                 }
+                log_mcp_output(mcp_logger, name, out["content"][0]["text"], is_error=True)
+                return out
 
         url = f"{self.base_url}/mcp"
         headers = {"x-api-key": self.api_key, "Content-Type": "application/json"}
@@ -61,16 +70,20 @@ class MCPClient:
             resp.raise_for_status()
             data = resp.json()
         except requests.RequestException as e:
-            return {
+            out = {
                 "isError": True,
                 "content": [{"type": "text", "text": f"MCP request failed: {e}"}],
             }
+            log_mcp_output(mcp_logger, name, str(e), is_error=True)
+            return out
 
         if "error" in data:
-            return {
+            out = {
                 "isError": True,
                 "content": [{"type": "text", "text": str(data["error"])}],
             }
+            log_mcp_output(mcp_logger, name, str(data["error"]), is_error=True)
+            return out
 
         result = data.get("result", {})
         if isinstance(result, dict) and result.get("isError"):
@@ -78,9 +91,14 @@ class MCPClient:
             for c in result.get("content", []):
                 if c.get("type") == "text":
                     text += c.get("text", "")
-            return {"isError": True, "content": [{"type": "text", "text": text or "Unknown error"}]}
+            err_out = {"isError": True, "content": [{"type": "text", "text": text or "Unknown error"}]}
+            log_mcp_output(mcp_logger, name, text or "Unknown error", is_error=True)
+            return err_out
 
-        return result if isinstance(result, dict) else {"content": [{"type": "text", "text": str(result)}]}
+        out = result if isinstance(result, dict) else {"content": [{"type": "text", "text": str(result)}]}
+        result_str = "\n".join(c.get("text", "") for c in out.get("content", []) if c.get("type") == "text") or "OK"
+        log_mcp_output(mcp_logger, name, result_str, is_error=False)
+        return out
 
     def call(self, name: str, arguments: dict[str, Any]) -> str:
         """Call MCP tool and return a string result for the agent."""

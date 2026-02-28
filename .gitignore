@@ -1,3 +1,6 @@
 hackapizza_env/
 .venv/
 .env
+logs/
+
+__pycache__/

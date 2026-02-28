@@ -5,6 +5,7 @@ from typing import Any
 from datapizza.clients.openai_like import OpenAILikeClient
 
 from src.config import BASE_URL, REGOLO_API_KEY, REGOLO_BASE_URL, REGOLO_MODEL, TEAM_API_KEY, TEAM_ID, validate_config
+from src.logging_config import setup_loggers
 from src.state import GameState, StateUpdater
 from src.sse import listen, log
 from src.tools import MCPClient
@@ -12,6 +13,7 @@ from src.agents import create_all_agents
 
 
 async def main() -> None:
+    setup_loggers()
     validate_config()
 
     state = GameState(restaurant_id=TEAM_ID)
