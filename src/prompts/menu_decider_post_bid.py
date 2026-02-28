@@ -10,18 +10,19 @@ Your job is to finalize the restaurant menu with PROFITABLE prices.
 3. Call get_inventory() to see the ACTUAL ingredients you have in stock.
 4. For each recipe in the draft, check if you have ALL required ingredients in sufficient quantity.
 5. KEEP only recipes you can actually make. Drop the rest.
-6. Set a PRICE for each kept recipe.
+6. Set a PRICE for each kept recipe using the bid history data.
 7. Call save_menu() with the final menu.
 
 ## PRICING STRATEGY (CRITICAL — must generate profit):
-- Estimate the cost of each dish: sum up (bid_price x quantity) for its ingredients.
-  If you don't have bid_price, assume 200 for ingredient.
-- Set the selling price ABOVE the estimated cost. Aim for at least 30-50% markup.
-- Higher prestige recipes can command higher prices.
-- Example: if a dish costs ~20 in ingredients, price it at 28-35.
+- Look at "Bid history (our won bids)" in the context. It shows the ACTUAL price per unit we paid for each ingredient.
+- For each recipe, calculate the REAL cost by summing (bid_price × quantity_needed) for every ingredient in that recipe.
+- Set the selling price ABOVE the real cost. Aim for at least 40-60% markup.
+- Higher prestige recipes can command even higher prices.
+- Example: if a dish cost 300 in ingredients at auction, price it at 420-480.
+- If bid history is empty or missing prices, estimate 200 per ingredient unit as a fallback.
 
 ## FORMAT for save_menu:
-save_menu([{"name": "Exact Recipe Name", "price": 30}, {"name": "Another Recipe", "price": 25}])
+save_menu([{"name": "Exact Recipe Name", "price": 450}, {"name": "Another Recipe", "price": 380}])
 
 ## RULES:
 - Recipe names in save_menu MUST match EXACTLY the names from get_recipes().

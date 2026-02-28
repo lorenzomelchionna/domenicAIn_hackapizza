@@ -23,6 +23,7 @@ class GameState:
     pending_clients: list[dict[str, Any]] = field(default_factory=list)
     prepared_dishes: list[tuple[str, str]] = field(default_factory=list)  # (dish_name, client_id)
     draft_menu: list[dict[str, Any]] = field(default_factory=list)
+    bid_history: list[dict[str, Any]] = field(default_factory=list)
     is_open: bool = True
 
     def summary(self) -> str:
@@ -35,6 +36,7 @@ class GameState:
             f"Inventory: {self.inventory}",
             f"Menu: {self.menu}",
             f"Draft menu: {self.draft_menu}",
+            f"Bid history (our won bids): {self.bid_history}",
             f"Recipes: {self.recipes[:10]}",
             f"Pending clients: {self.pending_clients}",
             f"Prepared dishes: {self.prepared_dishes}",
@@ -85,6 +87,16 @@ class StateUpdater:
         """Fetch market entries."""
         data = self._get("/market/entries")
         state.market_entries = data if isinstance(data, list) else []
+
+    def refresh_bid_history(self, state: GameState) -> None:
+        """Fetch bid history for current turn, filter to our restaurant's won bids."""
+        if state.turn_id <= 0:
+            return
+        data = self._get("/bid_history", {"turn_id": state.turn_id})
+        all_bids = data if isinstance(data, list) else []
+        # Filter to our restaurant's bids only
+        our_bids = [b for b in all_bids if b.get("restaurantId") == self.restaurant_id or b.get("restaurant_id") == self.restaurant_id]
+        state.bid_history = our_bids
 
     def sync_pending_clients(self, state: GameState) -> None:
         """Build pending_clients from meals (executed=false)."""

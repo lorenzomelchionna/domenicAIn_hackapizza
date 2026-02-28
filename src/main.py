@@ -85,6 +85,8 @@ async def main() -> None:
         state_updater.refresh_restaurant(state)
         if phase in ("waiting", "closed_bid"):
             state_updater.refresh_meals(state)
+        if phase == "waiting":
+            state_updater.refresh_bid_history(state)
         ctx = state.summary()
         msg = f"Current phase: {phase}. Execute phase-specific tasks.\n\nContext:\n{ctx}"
         try:
