@@ -1,0 +1,44 @@
+dag_pipeline:
+  modules:
+  - name: embedder
+    type: CohereEmbedder
+    module: datapizza.embedders.cohere
+    params:
+      api_key: ${COHERE_API_KEY}
+      base_url: ${COHERE_ENDPOINT}
+      model_name: embed-v4.0
+      input_type: query
+
+  - name: retriever
+    type: QdrantVectorstore
+    module: datapizza.vectorstores.qdrant
+    params:
+      host: "localhost"
+      port: 6333
+  
+  - name: prompt
+    type: ChatPromptTemplate
+    module: datapizza.modules.prompt
+    params:
+      user_prompt_template: "User question: {{user_prompt}}\n:"
+      retrieval_prompt_template: "Retrieved content:\n{% for chunk in chunks %}{{ chunk.text }}\n{% endfor %}"
+
+  - name: generator
+    type: OpenAIClient
+    module: datapizza.clients.openai
+    params:
+      api_key: ${OPENAI_API_KEY}
+      model: gpt-5.2
+
+  connections:
+    - from: embedder
+      to: retriever
+      target_key: query_vector
+
+    - from: retriever
+      to: prompt
+      target_key: chunks
+
+    - from: prompt
+      to: generator
+      target_key: memory

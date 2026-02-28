@@ -1,0 +1,46 @@
+# Define shared clients that can be referenced by other modules
+clients:
+  cohere_embedder:
+    type: CohereEmbedder
+    module: datapizza.embedders.cohere
+    params:
+      api_key: ${COHERE_API_KEY}
+      base_url: ${COHERE_ENDPOINT}
+      model_name: embed-v4.0
+
+# Define the processing modules in order
+modules:
+  # Parser: extract content from PDF documents
+  - type: DoclingParser
+    module: datapizza.modules.parsers.docling
+    params: {}
+
+  # Splitter: chunks the contente into manageable pieces
+  - type: RecursiveSplitter
+    module: datapizza.modules.splitters
+    params:
+      max_char: 2000
+      overlap: 100
+
+  # Embedder: generates vector embeddings for each chunk
+  - type: ChunkEmbedder
+    module: datapizza.embedders
+    params:
+      client: cohere_embedder
+      embedding_name: "embedding_vector"
+
+# Vector Store: store and query vector embeddings
+vector_store:
+  type: QdrantVectorstore
+  module: datapizza.vectorstores.qdrant
+  params:
+    host: "${QDRANT_HOST}"
+    api_key: "${QDRANT_API_KEY}"
+  collection_config:
+    collection_name: "hackapizza_ingestion"
+    vector_config:
+      dimensions: 1536 # must match the embedding model input 
+      name: "embedding_vector"
+
+# Specify the collection name for storing results
+collection_name: "hackapizza_ingestion"
