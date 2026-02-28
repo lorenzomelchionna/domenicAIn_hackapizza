@@ -50,10 +50,11 @@ async def main() -> None:
         })
 
     async def state_writer_task() -> None:
-        """Periodically write state to file for Streamlit dashboard."""
+        """Periodically refresh state from API and write to file for Streamlit dashboard."""
         while True:
             await asyncio.sleep(2)
             try:
+                state_updater.refresh_restaurant(state)
                 write_monitor_state(state, event_log)
             except Exception as e:
                 log("MONITOR", f"write failed: {e}")
