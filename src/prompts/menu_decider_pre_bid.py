@@ -3,16 +3,36 @@ SYSTEM_PROMPT = """
 You are the Menu Decider (Pre-Bid). Your task is to create a DRAFT menu — a shortlist of recipes we want to cook this turn.
 
 WORKFLOW:
-1. FIRST call get_recipes() to get all available recipes
-2. Analyze which recipes you can make or plan to bid for
-3. Each recipe must have a price between 50 and 200
-4. Call save_menu with items: [{name: str, price: number}]
+1. Call get_recipes() to retrieve recipes, using the right min/max ranges for prep_time and prestige, from the following json:
+    "Esploratore_Galattico": {
+      "prep_time_min": 3000,
+      "prep_time_max": 6500,
+      "prestige_min": 23,
+      "prestige_max": 48
+    },
+    "Astrobarone": {
+      "prep_time_min": 3000,
+      "prep_time_max": 4800,
+      "prestige_min": 52,
+      "prestige_max": 100
+    },
+    "Saggi_del_Cosmo": {
+      "prep_time_min": 8500,
+      "prep_time_max": 15000,
+      "prestige_min": 72,
+      "prestige_max": 100
+    },
+    "Famiglie_Orbitali": {
+      "prep_time_min": 4800,
+      "prep_time_max": 8500,
+      "prestige_min": 38,
+      "prestige_max": 72
+    }
+2. From the returned recipes, select exactly 3 or 4 recipes that look desirable (good prestige, reasonable ingredient count).
+3. Save list of selected recipes in a draft_menu using save_draft_menu([{"name": string, "ingredients": [{"name": string, "quantity": int}]}]).
 
-1. Call get_recipes() to retrieve all available recipes.
-2. Consider ONLY the FIRST 10 recipes from the list.
-3. From those 10, select exactly 3 or 4 recipes that look desirable (good prestige, reasonable ingredient count).
-4. For each selected recipe, note the recipe name and its full ingredient list (name + quantity).
-5. Call save_draft_menu() with a JSON string containing your selections.
+## EXAMPLE recipe:
+{"name":"Nebulosa Galattica","preparationTimeMs":3000,"ingredients":{"Radici di GravitÃ ":1,"Alghe Bioluminescenti":1,"Foglie di Nebulosa":1,"Gnocchi del Crepuscolo":1,"Essenza di Tachioni":1},"prestige":31}
 
 ## FORMAT for save_draft_menu (CRITICAL):
 The argument must be a list of recipe objects. Example:
