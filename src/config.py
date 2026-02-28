@@ -24,6 +24,8 @@ DATAPIZZA_OTLP_ENDPOINT = os.getenv(
 )
 DATAPIZZA_MONITORING_API_KEY = os.getenv("DATAPIZZA_MONITORING_API_KEY", "")
 DATAPIZZA_PROJECT_ID = os.getenv("DATAPIZZA_PROJECT_ID", "")
+# Data collection (Market Intelligence)
+DB_PATH = os.getenv("HACKAPIZZA_DB_PATH", "data/hackapizza.db")
 
 # Phase-to-agent mapping for extensibility (MVP: market_broker disabled)
 PHASE_AGENTS = {
