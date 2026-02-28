@@ -45,6 +45,6 @@ def create_all_agents(client, mcp_client, phase_getter, state_getter=None):
         market_broker,
         maitre,
     ]
-    restaurant_manager = create_restaurant_manager(client, sub_agents)
+    restaurant_manager = create_restaurant_manager(client, sub_agents, [tools_by_name["update_restaurant_is_open"]])
 
     return restaurant_manager, sub_agents
