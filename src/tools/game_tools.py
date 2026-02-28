@@ -135,6 +135,15 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         state.suggested_bids = parsed
         return f"Suggested bids saved for {len(parsed)} ingredients: {[p[0] for p in parsed]}"
 
+
+    @tool
+    def get_pending_clients() -> str:
+        """Get the list of pending clients waiting to be served. Returns a JSON list of clients with id, name, and intolerances."""
+        if state_getter is None:
+            return json.dumps({"error": "state_getter not configured"})
+        state = state_getter()
+        return json.dumps(state.pending_clients, ensure_ascii=False)
+
     @tool
     def get_suggested_bids() -> str:
         """Get analyst suggested bids: [(ingredient, price_per_unit), ...].
@@ -188,6 +197,7 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         execute_transaction,
         delete_market_entry,
         update_restaurant_is_open,
+        get_pending_clients,
         send_message,
         get_recipes,
         get_inventory,

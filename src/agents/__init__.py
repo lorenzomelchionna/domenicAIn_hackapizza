@@ -49,7 +49,7 @@ def create_all_agents(client, mcp_client, phase_getter, state_getter=None, db_pa
     )
     maitre = create_maitre(
         client,
-        [tools_by_name["prepare_dish"], tools_by_name["serve_dish"]],
+        [tools_by_name["prepare_dish"], tools_by_name["serve_dish"], tools_by_name["get_pending_clients"]],
     )
 
     # Create Analyst agent with market intelligence tools
