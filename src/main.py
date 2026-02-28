@@ -12,6 +12,7 @@ from src.state import GameState, StateUpdater
 from src.sse import listen, log
 from src.tools import MCPClient
 from src.agents import create_all_agents
+from src.data import DataCollector
 
 
 async def main() -> None:
@@ -19,12 +20,16 @@ async def main() -> None:
     validate_config()
 
     state = GameState(restaurant_id=TEAM_ID)
-    state_updater = StateUpdater(BASE_URL, TEAM_API_KEY, TEAM_ID)
+    data_collector = DataCollector()
+    state_updater = StateUpdater(BASE_URL, TEAM_API_KEY, TEAM_ID, data_collector)
 
     def phase_getter() -> str:
         return state.phase
 
-    mcp_client = MCPClient(BASE_URL, TEAM_API_KEY, phase_getter)
+    def turn_getter() -> int:
+        return state.turn_id
+
+    mcp_client = MCPClient(BASE_URL, TEAM_API_KEY, phase_getter, turn_getter, data_collector)
 
     client = OpenAILikeClient(
         api_key=REGOLO_API_KEY,
@@ -70,6 +75,9 @@ async def main() -> None:
         # 2. Refresh state for the new turn
         state_updater.refresh_restaurant(state)
         state_updater.refresh_restaurants(state)
+        # 3. Record turn start for data collection
+        data_collector.record_turn_start(state.turn_id, state.balance, state.reputation)
+        data_collector.record_inventory_snapshot(state.turn_id, "speaking", state.inventory)
         # 3. Run orchestrator for speaking/pre-bid
         ctx = state.summary()
         msg = f"Current phase: speaking. Execute phase-specific tasks.\n\nContext:\n{ctx}"
@@ -86,6 +94,12 @@ async def main() -> None:
         state_updater.refresh_restaurant(state)
         if phase in ("waiting", "closed_bid"):
             state_updater.refresh_meals(state)
+        # Record inventory snapshot for this phase
+        data_collector.record_inventory_snapshot(state.turn_id, phase, state.inventory)
+        # Record market snapshot
+        state_updater.refresh_market(state)
+        if state.market_entries:
+            data_collector.record_market_snapshot(state.turn_id, state.market_entries, TEAM_ID)
         ctx = state.summary()
         msg = f"Current phase: {phase}. Execute phase-specific tasks.\n\nContext:\n{ctx}"
         try:
@@ -101,9 +115,17 @@ async def main() -> None:
         state_updater.refresh_meals(state)
         state_updater.sync_pending_clients(state)
         ctx = state.summary()
+        client_id = str(data.get("clientId", data.get("client_id", "")))
         client_name = data.get("clientName", "")
         order_text = data.get("orderText", "")
         intolerances = data.get("intolerances", [])
+        # Record client order for data collection
+        data_collector.record_order(
+            turn_id=state.turn_id,
+            client_id=client_id,
+            client_name=client_name,
+            dish_ordered=order_text,
+        )
         msg = (
             f"A new client arrived: {client_name}.\n"
             f"Order: {order_text}\n"
@@ -161,6 +183,12 @@ async def main() -> None:
             elif event_type == "game_reset":
                 log("EVENT", "game reset")
                 append_event("EVENT", "game reset")
+            elif event_type == "game_ended" or event_type == "turn_ended":
+                # Record turn end for data collection
+                state_updater.refresh_restaurant(state)
+                data_collector.record_turn_end(state.turn_id, state.balance, state.reputation)
+                log("EVENT", f"turn ended - balance={state.balance} reputation={state.reputation}")
+                append_event("EVENT", "turn_ended", {"balance": state.balance, "reputation": state.reputation})
             elif event_type == "message":
                 log("EVENT", f"message from {event_data.get('sender')}")
                 append_event("EVENT", f"message from {event_data.get('sender')}", event_data)
@@ -182,6 +210,7 @@ async def main() -> None:
     finally:
         processor.cancel()
         writer.cancel()
+        data_collector.close()
         try:
             await processor
         except asyncio.CancelledError:

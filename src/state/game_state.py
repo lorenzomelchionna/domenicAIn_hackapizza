@@ -1,8 +1,13 @@
 """Game state for Hackapizza restaurant. Updated from SSE events and HTTP endpoints."""
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any, Callable
 
 import requests
+
+if TYPE_CHECKING:
+    from src.data import DataCollector
 
 
 @dataclass
@@ -45,11 +50,18 @@ class GameState:
 class StateUpdater:
     """Fetches and updates GameState from HTTP endpoints."""
 
-    def __init__(self, base_url: str, api_key: str, restaurant_id: int):
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        restaurant_id: int,
+        data_collector: DataCollector | None = None,
+    ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.restaurant_id = restaurant_id
         self._headers = {"x-api-key": api_key}
+        self._data_collector = data_collector
 
     def _get(self, path: str, params: dict | None = None) -> dict | list:
         url = f"{self.base_url}{path}"
@@ -71,8 +83,22 @@ class StateUpdater:
         state.recipes = self._get("/recipes") or []
 
     def refresh_restaurants(self, state: GameState) -> None:
-        """Fetch all restaurants (for Diplomatico)."""
+        """Fetch all restaurants (for Diplomatico) and collect competitor data."""
         state.restaurants = self._get("/restaurants") or []
+        
+        # Collect competitor menus for data analysis
+        if self._data_collector and state.turn_id > 0:
+            for restaurant in state.restaurants:
+                rid = restaurant.get("id")
+                if rid and rid != self.restaurant_id:
+                    menu = restaurant.get("menu", [])
+                    if menu:
+                        self._data_collector.record_competitor_menu(
+                            turn_id=state.turn_id,
+                            restaurant_id=rid,
+                            restaurant_name=restaurant.get("name", ""),
+                            menu_items=menu,
+                        )
 
     def refresh_meals(self, state: GameState) -> None:
         """Fetch meals for current turn."""
@@ -82,9 +108,17 @@ class StateUpdater:
         state.meals = data if isinstance(data, list) else []
 
     def refresh_market(self, state: GameState) -> None:
-        """Fetch market entries."""
+        """Fetch market entries and collect data."""
         data = self._get("/market/entries")
         state.market_entries = data if isinstance(data, list) else []
+        
+        # Collect market snapshot for data analysis
+        if self._data_collector and state.turn_id > 0 and state.market_entries:
+            self._data_collector.record_market_snapshot(
+                turn_id=state.turn_id,
+                entries=state.market_entries,
+                our_restaurant_id=self.restaurant_id,
+            )
 
     def sync_pending_clients(self, state: GameState) -> None:
         """Build pending_clients from meals (executed=false)."""
