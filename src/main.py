@@ -7,6 +7,7 @@ from datapizza.clients.openai_like import OpenAILikeClient
 
 from src.config import BASE_URL, REGOLO_API_KEY, REGOLO_BASE_URL, REGOLO_MODEL, TEAM_API_KEY, TEAM_ID, validate_config
 from src.logging_config import setup_loggers
+from src.targeting import compute_target_ranges
 from src.monitor_state import write_monitor_state
 from src.state import GameState, StateUpdater
 from src.sse import listen, log
@@ -67,7 +68,18 @@ async def main() -> None:
         if phase == "speaking":
             state_updater.refresh_restaurants(state)
         ctx = state.summary()
-        msg = f"Current phase: {phase}. Execute phase-specific tasks.\n\nContext:\n{ctx}"
+        ranges = compute_target_ranges(state.recipes)
+        ranges_str = (
+            f"Target client: {ranges['target_client']}\n"
+            f"Recipe filter ranges: prep_time [{ranges['prep_time_min']}-{ranges['prep_time_max']}], "
+            f"prestige [{ranges['prestige_min']}-{ranges['prestige_max']}] "
+            f"({ranges.get('recipes_in_range', '?')}/{ranges.get('total_recipes', '?')} recipes in range)"
+        )
+        msg = (
+            f"Current phase: {phase}. Execute phase-specific tasks.\n\n"
+            f"Targeting:\n{ranges_str}\n\n"
+            f"Context:\n{ctx}"
+        )
         try:
             resp = restaurant_manager.run(msg)
             log("AGENT", f"orchestrator response: {resp.text[:200] if resp and resp.text else 'ok'}")

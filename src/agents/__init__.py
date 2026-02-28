@@ -17,13 +17,16 @@ def create_all_agents(client, mcp_client, phase_getter, state_getter=None):
     diplomatico = create_diplomatico(client, [tools_by_name["send_message"]])
     menu_decider_pre_bid = create_menu_decider_pre_bid(
         client,
-        [tools_by_name["save_menu"], tools_by_name["get_recipes"], tools_by_name["get_inventory"]],
+        [tools_by_name["get_recipes"], tools_by_name["get_inventory"]],
     )
     menu_decider_post_bid = create_menu_decider_post_bid(
         client,
         [tools_by_name["save_menu"], tools_by_name["get_recipes"], tools_by_name["get_inventory"]],
     )
-    auction_broker = create_auction_broker(client, [tools_by_name["closed_bid"]])
+    auction_broker = create_auction_broker(
+        client,
+        [tools_by_name["closed_bid"], tools_by_name["recipes_to_bids"], tools_by_name["get_recipes"]],
+    )
     market_broker = create_market_broker(
         client,
         [

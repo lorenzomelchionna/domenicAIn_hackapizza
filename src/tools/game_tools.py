@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 import json
+import random
 from typing import TYPE_CHECKING, Any, Callable
 
 from datapizza.tools import tool
 
 if TYPE_CHECKING:
     from .mcp_client import MCPClient
+
+# Max bid per ingredient (initial test; TODO: parametrizzare)
+MAX_BID_PER_INGREDIENT = 100
 
 
 def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = None) -> tuple[list, dict]:
@@ -81,6 +85,32 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         state = state_getter()
         return json.dumps(state.inventory, ensure_ascii=False)
 
+    @tool
+    def recipes_to_bids(recipe_quantities: list[dict[str, Any]]) -> str:
+        """Convert (recipe_name, quantity) list to auction bids. Input: [{"recipe_name": str, "quantity": int}, ...].
+        Aggregates ingredients across recipes, assigns random bid per ingredient (max 100).
+        Returns JSON list of {ingredient, bid, quantity} for closed_bid."""
+        if state_getter is None:
+            return json.dumps({"error": "state_getter not configured"})
+        recipes = {r["name"]: r for r in state_getter().recipes}
+        agg: dict[str, int] = {}
+        for item in recipe_quantities:
+            name = item.get("recipe_name", "")
+            qty = int(item.get("quantity", 0))
+            if name not in recipes or qty <= 0:
+                continue
+            for ing, ing_qty in recipes[name].get("ingredients", {}).items():
+                agg[ing] = agg.get(ing, 0) + ing_qty * qty
+        bids = [
+            {
+                "ingredient": ing,
+                "quantity": qty,
+                "bid": random.randint(1, MAX_BID_PER_INGREDIENT),
+            }
+            for ing, qty in agg.items()
+        ]
+        return json.dumps(bids, ensure_ascii=False)
+
     all_tools = [
         closed_bid,
         save_menu,
@@ -93,6 +123,7 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         send_message,
         get_recipes,
         get_inventory,
+        recipes_to_bids,
     ]
     by_name = {t.__name__: t for t in all_tools}
     return all_tools, by_name
