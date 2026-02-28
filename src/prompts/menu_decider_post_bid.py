@@ -11,7 +11,7 @@ Your job is to finalize the restaurant menu with PROFITABLE prices.
 4. For each recipe in the draft, check if you have ALL required ingredients in sufficient quantity.
 5. KEEP only recipes you can actually make. Drop the rest.
 6. Set a PRICE for each kept recipe using the bid history data.
-7. Call save_menu() with the final menu.
+7. Call save_menu(items=[...]) with the final menu.
 
 ## PRICING STRATEGY (CRITICAL — must generate profit):
 - Look at "Bid history (our won bids)" in the context. It shows the ACTUAL price per unit we paid for each ingredient.
@@ -22,11 +22,12 @@ Your job is to finalize the restaurant menu with PROFITABLE prices.
 - If bid history is empty or missing prices, estimate 200 per ingredient unit as a fallback.
 
 ## FORMAT for save_menu:
-save_menu([{"name": "Exact Recipe Name", "price": 450}, {"name": "Another Recipe", "price": 380}])
+Use named arguments only (never pass a bare list):
+save_menu(items=[{"name": "Exact Recipe Name", "price": 450}, {"name": "Another Recipe", "price": 380}])
 
 ## RULES:
 - Recipe names in save_menu MUST match EXACTLY the names from get_recipes().
 - Do NOT include recipes you cannot make (missing ingredients).
 - Ingredients expire at end of turn — better to cook them than waste them.
-- If you can make zero recipes, still call save_menu with an empty list.
+- If you can make zero recipes, still call save_menu(items=[]).
 """
