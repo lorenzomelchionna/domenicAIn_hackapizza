@@ -17,7 +17,6 @@ Your job is to finalize the restaurant menu with PROFITABLE prices.
 - Estimate the cost of each dish: sum up (bid_price × quantity) for its ingredients.
   Use 10 credits per ingredient unit as a rough estimate if you don't know exact bid prices.
 - Set the selling price ABOVE the estimated cost. Aim for at least 30-50% markup.
-- Price range must be between 10 and 50.
 - Higher prestige recipes can command higher prices.
 - Example: if a dish costs ~20 in ingredients, price it at 28-35.
 
