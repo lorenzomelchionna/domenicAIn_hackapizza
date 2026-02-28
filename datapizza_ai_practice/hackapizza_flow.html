@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hackapizza 2.0 - System Flow</title>
+    <style>
+        :root {
+            --color-bg: #0f172a;
+            --color-surface: #1e293b;
+            --color-card: #334155;
+            --color-text: #f1f5f9;
+            --color-text-dim: #cbd5e1;
+            --color-accent: #38bdf8;
+            --color-success: #10b981;
+            --color-warning: #f59e0b;
+            --color-error: #ef4444;
+            --color-purple: #a78bfa;
+            --color-orange: #fb923c;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--color-bg);
+            color: var(--color-text);
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: var(--color-accent);
+            margin-bottom: 10px;
+            font-size: 2.5rem;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: var(--color-text-dim);
+            margin-bottom: 30px;
+            font-size: 1.1rem;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            background: var(--color-surface);
+            border: 2px solid var(--color-card);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+
+        .tab:hover {
+            background: var(--color-card);
+            border-color: var(--color-accent);
+        }
+
+        .tab.active {
+            background: var(--color-accent);
+            border-color: var(--color-accent);
+            color: var(--color-bg);
+        }
+
+        .flow-container {
+            display: none;
+        }
+
+        .flow-container.active {
+            display: block;
+        }
+
+        .flow-section {
+            background: var(--color-surface);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid var(--color-card);
+        }
+
+        .flow-section h2 {
+            color: var(--color-accent);
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+        }
+
+        .flow-section h3 {
+            color: var(--color-warning);
+            margin: 15px 0 10px 0;
+            font-size: 1.2rem;
+        }
+
+        .flow-box {
+            background: var(--color-card);
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            border-left: 4px solid var(--color-accent);
+        }
+
+        .flow-box.speaking {
+            border-left-color: var(--color-purple);
+        }
+
+        .flow-box.closed-bid {
+            border-left-color: var(--color-warning);
+        }
+
+        .flow-box.waiting {
+            border-left-color: var(--color-success);
+        }
+
+        .flow-box.serving {
+            border-left-color: var(--color-error);
+        }
+
+        .flow-box.stopped {
+            border-left-color: #64748b;
+        }
+
+        .arrow {
+            text-align: center;
+            color: var(--color-accent);
+            font-size: 1.5rem;
+            margin: 10px 0;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            margin: 15px 0;
+        }
+
+        .info-card {
+            background: var(--color-card);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+        }
+
+        .info-card h4 {
+            color: var(--color-accent);
+            margin-bottom: 8px;
+        }
+
+        .info-card ul {
+            margin-left: 20px;
+            color: var(--color-text-dim);
+        }
+
+        .phase-label {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-right: 8px;
+        }
+
+        .phase-speaking { background: var(--color-purple); color: white; }
+        .phase-closed-bid { background: var(--color-warning); color: white; }
+        .phase-waiting { background: var(--color-success); color: white; }
+        .phase-serving { background: var(--color-error); color: white; }
+        .phase-stopped { background: #64748b; color: white; }
+
+        .legend {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+            padding: 15px;
+            background: var(--color-surface);
+            border-radius: 8px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-color {
+            width: 30px;
+            height: 15px;
+            border-radius: 3px;
+        }
+
+        code {
+            background: var(--color-bg);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            color: var(--color-accent);
+        }
+
+        .event-box {
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid var(--color-accent);
+            padding: 10px;
+            border-radius: 6px;
+            margin: 8px 0;
+            font-size: 0.95rem;
+        }
+
+        .tool-box {
+            background: rgba(167, 139, 250, 0.1);
+            border: 1px solid var(--color-purple);
+            padding: 10px;
+            border-radius: 6px;
+            margin: 8px 0;
+            font-size: 0.95rem;
+        }
+
+        .critical {
+            background: rgba(239, 68, 68, 0.1);
+            border: 2px solid var(--color-error);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .critical h4 {
+            color: var(--color-error);
+            margin-bottom: 8px;
+        }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 1.8rem; }
+            .subtitle { font-size: 1rem; }
+            .tabs { flex-direction: column; }
+            .tab { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🍕 Hackapizza 2.0: System Flow</h1>
+        <p class="subtitle">Diagrammi e flussi completi del sistema di gioco</p>
+
+        <div class="tabs">
+            <button class="tab active" onclick="showFlow('overview')">📊 Overview Completa</button>
+            <button class="tab" onclick="showFlow('turn')">🔄 Flusso Turno</button>
+            <button class="tab" onclick="showFlow('sse')">📡 Eventi SSE</button>
+            <button class="tab" onclick="showFlow('mcp')">🔧 Tool MCP</button>
+            <button class="tab" onclick="showFlow('operations')">⚙️ Operazioni per Fase</button>
+            <button class="tab" onclick="showFlow('agent')">🤖 Architettura Agente</button>
+        </div>
+
+        <!-- Overview Completa -->
+        <div id="overview" class="flow-container active">
+            <div class="flow-section">
+                <h2>🎮 Struttura Generale del Sistema</h2>
+                
+                <div class="flow-box">
+                    <strong>Run</strong> (Sessione di gioco completa)
+                    <div class="arrow">↓</div>
+                    <strong>Turni consecutivi</strong> (5-10 minuti ciascuno)
+                    <div class="arrow">↓</div>
+                    <strong>Fasi sequenziali</strong> (speaking → closed_bid → waiting → serving → stopped)
+                </div>
+
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color phase-speaking"></div>
+                        <span>Speaking Phase</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color phase-closed-bid"></div>
+                        <span>Closed Bid Phase</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color phase-waiting"></div>
+                        <span>Waiting Phase</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color phase-serving"></div>
+                        <span>Serving Phase</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color phase-stopped"></div>
+                        <span>Stopped</span>
+                    </div>
+                </div>
+
+                <h3>🏢 Componenti del Sistema</h3>
+                <div class="grid-2">
+                    <div class="info-card">
+                        <h4>🔌 Server di Gioco</h4>
+                        <ul>
+                            <li>Gestisce turni e fasi</li>
+                            <li>Coordina tutti i ristoranti</li>
+                            <li>Trasmette eventi SSE</li>
+                            <li>Esegue tool MCP</li>
+                            <li>Gestisce mercato e aste</li>
+                        </ul>
+                    </div>
+                    <div class="info-card">
+                        <h4>🤖 Agente (Ristorante)</h4>
+                        <ul>
+                            <li>Ascolta eventi SSE</li>
+                            <li>Prende decisioni strategiche</li>
+                            <li>Chiama tool MCP</li>
+                            <li>Gestisce inventario e menu</li>
+                            <li>Interagisce con altri ristoranti</li>
+                        </ul>
+                    </div>
+                    <div class="info-card">
+                        <h4>📡 SSE Stream</h4>
+                        <ul>
+                            <li>Connessione persistente</li>
+                            <li>Eventi real-time</li>
+                            <li>Cambio fase</li>
+                            <li>Spawn clienti</li>
+                            <li>Messaggi da altri team</li>
+                        </ul>
+                    </div>
+                    <div class="info-card">
+                        <h4>🔧 MCP Tools</h4>
+                        <ul>
+                            <li>closed_bid</li>
+                            <li>save_menu</li>
+                            <li>prepare_dish / serve_dish</li>
+                            <li>create_market_entry</li>
+                            <li>send_message</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flow-section">
+                <h2>📅 Timeline Evento</h2>
+                <div class="flow-box">
+                    <strong>Sabato 12:00-14:00</strong>: Setup e studio traccia (server attivo, no run)
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-box">
+                    <strong>Sabato 14:00-17:00</strong>: Run di Testing (risultati non contano, possibili reset)
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-box">
+                    <strong>Sabato 17:00 - Domenica 10:00</strong>: Run Ufficiale (risultati contano, no reset, modifiche codice ok)
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-box">
+                    <strong>Domenica 10:00</strong>: STOP THE CODING + Reset completo
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-box">
+                    <strong>Domenica 10:00-12:00</strong>: 🏆 GOLDEN RUN (solo agenti, no modifiche, peso alto in classifica)
+                </div>
+            </div>
+        </div>
+
+        <!-- Flusso Turno -->
+        <div id="turn" class="flow-container">
+            <div class="flow-section">
+                <h2>🔄 Ciclo Completo di un Turno</h2>
+                
+                <div class="event-box">
+                    <strong>📡 SSE:</strong> <code>game_started</code> → Inizio nuovo turno
+                </div>
+
+                <div class="arrow">↓</div>
+
+                <div class="flow-box speaking">
+                    <span class="phase-label phase-speaking">SPEAKING</span>
+                    <strong>Fase 1: Diplomazia e Pianificazione</strong>
+                    <ul>
+                        <li>✅ Parlare con altri team via <code>send_message</code></li>
+                        <li>✅ Stringere alleanze/accordi</li>
+                        <li>✅ Definire strategia del turno</li>
+                        <li>✅ Impostare menu con <code>save_menu</code></li>
+                        <li>✅ Aprire/chiudere ristorante</li>
+                        <li>✅ Mercato interno (create/execute/delete market entry)</li>
+                        <li>❌ NO asta ingredienti ancora</li>
+                    </ul>
+                </div>
+
+                <div class="event-box">
+                    <strong>📡 SSE:</strong> <code>game_phase_changed</code> → <code>phase: "closed_bid"</code>
+                </div>
+
+                <div class="arrow">↓</div>
+
+                <div class="flow-box closed-bid">
+                    <span class="phase-label phase-closed-bid">CLOSED BID</span>
+                    <strong>Fase 2: Asta Cieca Ingredienti</strong>
+                    <ul>
+                        <li>✅ Inviare offerte con <code>closed_bid</code></li>
+                        <li>✅ Ingredienti limitati, chi offre di più ha priorità</li>
+                        <li>✅ Possibile ricevere solo parte della quantità richiesta</li>
+                        <li>✅ Ultima submission vince (se mandi più volte)</li>
+                        <li>✅ Ancora possibile: save_menu, mercato interno, send_message</li>
+                        <li>❌ NO preparazione/servizio piatti</li>
+                    </ul>
+                </div>
+
+                <div class="event-box">
+                    <strong>📡 SSE:</strong> <code>game_phase_changed</code> → <code>phase: "waiting"</code>
+                </div>
+
+                <div class="arrow">↓</div>
+
+                <div class="flow-box waiting">
+                    <span class="phase-label phase-waiting">WAITING</span>
+                    <strong>Fase 3: Assestamento Strategico</strong>
+                    <ul>
+                        <li>✅ Analizzare ingredienti ottenuti (GET /restaurant/:id)</li>
+                        <li>✅ Aggiornare menu finale con <code>save_menu</code></li>
+                        <li>✅ Chiudere/rafforzare accordi</li>
+                        <li>✅ Mercato interno per comprare/vendere ingredienti mancanti</li>
+                        <li>✅ Decidere strategia di servizio</li>
+                        <li>❌ NO preparazione/servizio ancora</li>
+                    </ul>
+                </div>
+
+                <div class="event-box">
+                    <strong>📡 SSE:</strong> <code>game_phase_changed</code> → <code>phase: "serving"</code>
+                </div>
+
+                <div class="arrow">↓</div>
+
+                <div class="flow-box serving">
+                    <span class="phase-label phase-serving">SERVING</span>
+                    <strong>Fase 4: Servizio ai Clienti</strong>
+                    
+                    <div class="event-box" style="margin-top: 10px;">
+                        <strong>📡 SSE:</strong> <code>client_spawned</code> → <code>{ clientName, orderText }</code>
+                    </div>
+                    
+                    <ul style="margin-top: 10px;">
+                        <li>✅ Interpretare richiesta cliente</li>
+                        <li>✅ Preparare piatto con <code>prepare_dish</code></li>
+                    </ul>
+
+                    <div class="event-box">
+                        <strong>📡 SSE:</strong> <code>preparation_complete</code> → <code>{ dish }</code>
+                    </div>
+
+                    <ul>
+                        <li>✅ Servire con <code>serve_dish</code> (dish_name, client_id)</li>
+                        <li>⚠️ Verificare intolleranze cliente!</li>
+                        <li>⚠️ Cliente non servito o servito male = non paga + danno reputazione</li>
+                        <li>✅ Possibile chiudere temporaneamente se sopraffatti</li>
+                        <li>✅ Mercato interno ancora attivo</li>
+                        <li>❌ NO save_menu (bloccato in serving)</li>
+                    </ul>
+                </div>
+
+                <div class="critical">
+                    <h4>⚠️ REGOLA CRITICA: Ingredienti Deperibili</h4>
+                    <p>Alla fine del turno (fase stopped), TUTTI gli ingredienti non utilizzati <strong>scadono e vengono persi</strong>. Pianifica gli acquisti solo per ciò che puoi realmente cucinare!</p>
+                </div>
+
+                <div class="event-box">
+                    <strong>📡 SSE:</strong> <code>game_phase_changed</code> → <code>phase: "stopped"</code>
+                </div>
+
+                <div class="arrow">↓</div>
+
+                <div class="flow-box stopped">
+                    <span class="phase-label phase-stopped">STOPPED</span>
+                    <strong>Fine Turno</strong>
+                    <ul>
+                        <li>🗑️ Ingredienti non usati scadono e vengono eliminati</li>
+                        <li>💰 Aggiornamento saldo ristorante</li>
+                        <li>⭐ Aggiornamento reputazione</li>
+                        <li>📊 Calcolo metriche turno</li>
+                        <li>❌ Tutte le operazioni bloccate</li>
+                        <li>✅ Solo lettura dati (GET endpoints)</li>
+                    </ul>
+                </div>
+
+                <div class="arrow">↓</div>
+
+                <div class="flow-box">
+                    <strong>Nuovo turno inizia...</strong> (loop back a <code>game_started</code>)
+                </div>
+            </div>
+        </div>
+
+        <!-- Eventi SSE -->
+        <div id="sse" class="flow-container">
+            <div class="flow-section">
+                <h2>📡 Sistema Eventi SSE</h2>
+                
+                <div class="info-card" style="margin-bottom: 20px;">
+                    <h4>Connessione</h4>
+                    <p><strong>Endpoint:</strong> <code>GET /events/:restaurantId</code></p>
+                    <p><strong>Header:</strong> <code>x-api-key</code></p>
+                    <p><strong>Regole:</strong></p>
+                    <ul>
+                        <li>Solo una connessione SSE attiva per ristorante</li>
+                        <li>Puoi connetterti solo al tuo restaurantId</li>
+                        <li>Handshake iniziale: <code>data: connected</code></li>
+                    </ul>
+                </div>
+
+                <h3>📨 Catalogo Eventi</h3>
+
+                <div class="event-box">
+                    <strong>game_started</strong> (broadcast a tutti)
+                    <p>Payload: <code>{}</code></p>
+                    <p>Indica l'inizio di un nuovo turno</p>
+                </div>
+
+                <div class="event-box">
+                    <strong>game_phase_changed</strong> (broadcast a tutti)
+                    <p>Payload: <code>{ phase: "speaking" | "closed_bid" | "waiting" | "serving" | "stopped" }</code></p>
+                    <p>Indica il cambio di fase nel turno corrente</p>
+                </div>
+
+                <div class="event-box">
+                    <strong>client_spawned</strong> (solo al ristorante destinatario)
+                    <p>Payload: <code>{ clientName: string, orderText: string }</code></p>
+                    <p>Un cliente è arrivato e ha fatto una richiesta (solo in serving phase)</p>
+                </div>
+
+                <div class="event-box">
+                    <strong>preparation_complete</strong> (solo al ristorante destinatario)
+                    <p>Payload: <code>{ dish: string }</code></p>
+                    <p>La preparazione del piatto è completata, pronto per essere servito</p>
+                </div>
+
+                <div class="event-box">
+                    <strong>message</strong> (broadcast a tutti)
+                    <p>Payload: <code>{ sender: string, payload: any }</code></p>
+                    <p>Messaggio pubblico (es. nuova entry di mercato creata)</p>
+                </div>
+
+                <div class="event-box">
+                    <strong>new_message</strong> (solo al ristorante destinatario)
+                    <p>Payload: <code>{ messageId, senderId, senderName, text, datetime }</code></p>
+                    <p>Messaggio privato ricevuto da altro team via send_message</p>
+                </div>
+
+                <div class="event-box">
+                    <strong>heartbeat</strong> (broadcast a tutti)
+                    <p>Payload: <code>{ ts: number }</code> (epoch milliseconds)</p>
+                    <p>Health check della connessione SSE, ignorare nella logica di gioco</p>
+                </div>
+
+                <div class="event-box">
+                    <strong>game_reset</strong> (broadcast a tutti)
+                    <p>Payload: <code>{}</code></p>
+                    <p>Reset completo del gioco (es. tra run)</p>
+                </div>
+
+                <div class="critical">
+                    <h4>🔑 Pattern Implementazione</h4>
+                    <p><strong>1.</strong> Aprire connessione SSE all'avvio dell'agente</p>
+                    <p><strong>2.</strong> Gestire eventi in modo asincrono (non bloccare)</p>
+                    <p><strong>3.</strong> Riconnettere automaticamente se connessione cade</p>
+                    <p><strong>4.</strong> Ignorare heartbeat nella logica di gioco</p>
+                    <p><strong>5.</strong> Su game_phase_changed: triggerare logica specifica della fase</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tool MCP -->
+        <div id="mcp" class="flow-container">
+            <div class="flow-section">
+                <h2>🔧 Tool MCP Disponibili</h2>
+
+                <div class="info-card" style="margin-bottom: 20px;">
+                    <h4>Endpoint MCP</h4>
+                    <p><strong>Metodo:</strong> <code>POST /mcp</code></p>
+                    <p><strong>Header:</strong> <code>x-api-key</code></p>
+                    <p><strong>Protocollo:</strong> JSON-RPC (<code>tools/call</code>)</p>
+                    <p><strong>Risposta successo:</strong> <code>result.isError = false</code></p>
+                    <p><strong>Risposta errore:</strong> <code>result.isError = true</code> + messaggio in <code>result.content[0].text</code></p>
+                </div>
+
+                <h3>🛠️ Tool per Fase</h3>
+
+                <div class="tool-box">
+                    <strong>closed_bid</strong>
+                    <p><strong>Input:</strong> <code>{ bids: [{ ingredient, bid, quantity }] }</code></p>
+                    <p><strong>Fase:</strong> solo closed_bid</p>
+                    <p><strong>Note:</strong> Se invii più volte, vale ultima submission</p>
+                </div>
+
+                <div class="tool-box">
+                    <strong>save_menu</strong>
+                    <p><strong>Input:</strong> <code>{ items: [{ name, price }] }</code></p>
+                    <p><strong>Fase:</strong> speaking, closed_bid, waiting</p>
+                    <p><strong>Note:</strong> Imposta/aggiorna menu del ristorante</p>
+                </div>
+
+                <div class="tool-box">
+                    <strong>prepare_dish</strong>
+                    <p><strong>Input:</strong> <code>{ dish_name: string }</code></p>
+                    <p><strong>Fase:</strong> solo serving</p>
+                    <p><strong>Note:</strong> Avvia preparazione, ricevi event preparation_complete quando pronto</p>
+                </div>
+
+                <div class="tool-box">
+                    <strong>serve_dish</strong>
+                    <p><strong>Input:</strong> <code>{ dish_name: string, client_id: string }</code></p>
+                    <p><strong>Fase:</strong> solo serving</p>
+                    <p><strong>Note:</strong> Serve piatto a cliente, verifica intolleranze prima!</p>
+                </div>
+
+                <div class="tool-box">
+                    <strong>create_market_entry</strong>
+                    <p><strong>Input:</strong> <code>{ side: "BUY"|"SELL", ingredient_name, quantity, price }</code></p>
+                    <p><strong>Fase:</strong> speaking, closed_bid, waiting, serving</p>
+                    <p><strong>Note:</strong> Crea offerta mercato, broadcast evento message a tutti</p>
+                </div>
+
+                <div class="tool-box">
+                    <strong>execute_transaction</strong>
+                    <p><strong>Input:</strong> <code>{ market_entry_id: number }</code></p>
+                    <p><strong>Fase:</strong> speaking, closed_bid, waiting, serving</p>
+                    <p><strong>Note:</strong> Accetta entry di mercato esistente</p>
+                </div>
+
+                <div class="tool-box">
+                    <strong>delete_market_entry</strong>
+                    <p><strong>Input:</strong> <code>{ market_entry_id: number }</code></p>
+                    <p><strong>Fase:</strong> speaking, closed_bid, waiting, serving</p>
+                    <p><strong>Note:</strong> Rimuove tua entry di mercato</p>
+                </div>
+
+                <div class="tool-box">
+                    <strong>update_restaurant_is_open</strong>
+                    <p><strong>Input:</strong> <code>{ is_open: boolean }</code></p>
+                    <p><strong>Fase:</strong> speaking, closed_bid, waiting (apri/chiudi), serving (solo chiudi)</p>
+                    <p><strong>Note:</strong> Apre o chiude ristorante, ristorante chiuso = invisibile ai clienti</p>
+                </div>
+
+                <div class="tool-box">
+                    <strong>send_message</strong>
+                    <p><strong>Input:</strong> <code>{ recipient_id: number, text: string }</code></p>
+                    <p><strong>Fase:</strong> speaking, closed_bid, waiting, serving</p>
+                    <p><strong>Note:</strong> Messaggio diretto a team, ricevitore ottiene evento new_message</p>
+                </div>
+
+                <div class="critical">
+                    <h4>⚠️ Rate Limiting</h4>
+                    <p>Tutte le chiamate MCP sono soggette a rate limiting. Errore <code>429</code> se superi il limite.</p>
+                    <p><strong>Strategia:</strong> Raggruppa operazioni, pianifica bene, evita chiamate inutili.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Operazioni per Fase -->
+        <div id="operations" class="flow-container">
+            <div class="flow-section">
+                <h2>⚙️ Matrice Operazioni per Fase</h2>
+                
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; background: var(--color-card); border-radius: 8px;">
+                        <thead>
+                            <tr style="background: var(--color-surface);">
+                                <th style="padding: 12px; text-align: left; border-bottom: 2px solid var(--color-accent);">Operazione</th>
+                                <th style="padding: 12px; text-align: center; border-bottom: 2px solid var(--color-accent);">Speaking</th>
+                                <th style="padding: 12px; text-align: center; border-bottom: 2px solid var(--color-accent);">Closed Bid</th>
+                                <th style="padding: 12px; text-align: center; border-bottom: 2px solid var(--color-accent);">Waiting</th>
+                                <th style="padding: 12px; text-align: center; border-bottom: 2px solid var(--color-accent);">Serving</th>
+                                <th style="padding: 12px; text-align: center; border-bottom: 2px solid var(--color-accent);">Stopped</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td style="padding: 12px; border-bottom: 1px solid var(--color-surface);">save_menu</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-error);">❌</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-error);">❌</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 12px; border-bottom: 1px solid var(--color-surface);">closed_bid</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-error);">❌</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-error);">❌</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-error);">❌</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-error);">❌</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 12px; border-bottom: 1px solid var(--color-surface);">prepare_dish</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-error);">❌</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-error);">❌</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-error);">❌</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-error);">❌</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 12px; border-bottom: 1px solid var(--color-surface);">serve_dish</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-error);">❌</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-error);">❌</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-error);">❌</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-error);">❌</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 12px; border-bottom: 1px solid var(--color-surface);">create_market_entry</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-error);">❌</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 12px; border-bottom: 1px solid var(--color-surface);">execute_transaction</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-error);">❌</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 12px; border-bottom: 1px solid var(--color-surface);">delete_market_entry</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-error);">❌</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 12px; border-bottom: 1px solid var(--color-surface);">send_message</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-error);">❌</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 12px; border-bottom: 1px solid var(--color-surface);">update_restaurant_is_open</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-warning);">⚠️ solo close</td>
+                                <td style="padding: 12px; text-align: center; border-bottom: 1px solid var(--color-surface); color: var(--color-error);">❌</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 12px;">restaurant_info, get_meals</td>
+                                <td style="padding: 12px; text-align: center; color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; color: var(--color-success);">✅</td>
+                                <td style="padding: 12px; text-align: center; color: var(--color-success);">✅</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architettura Agente -->
+        <div id="agent" class="flow-container">
+            <div class="flow-section">
+                <h2>🤖 Architettura Agente Consigliata</h2>
+                
+                <div class="critical">
+                    <h4>📋 Framework Obbligatorio: datapizza-ai</h4>
+                    <p>La soluzione DEVE usare il framework <code>datapizza-ai</code></p>
+                    <p><strong>Installazione:</strong> <code>pip install datapizza-ai</code></p>
+                    <p><strong>Docs:</strong> docs.datapizza.ai/0.0.9</p>
+                </div>
+
+                <h3>🏗️ Componenti Principali</h3>
+
+                <div class="grid-2">
+                    <div class="info-card">
+                        <h4>1️⃣ SSE Listener</h4>
+                        <ul>
+                            <li>Connessione persistente a /events/:restaurantId</li>
+                            <li>Gestione asincrona eventi</li>
+                            <li>Riconnessione automatica</li>
+                            <li>Event handler per ciascun tipo evento</li>
+                        </ul>
+                    </div>
+                    <div class="info-card">
+                        <h4>2️⃣ State Manager</h4>
+                        <ul>
+                            <li>Stato corrente ristorante (saldo, inventario, menu)</li>
+                            <li>Fase corrente del turno</li>
+                            <li>Storico turni e performance</li>
+                            <li>Clienti in attesa/serviti</li>
+                        </ul>
+                    </div>
+                    <div class="info-card">
+                        <h4>3️⃣ Strategy Engine</h4>
+                        <ul>
+                            <li>Decisioni di bidding (closed_bid)</li>
+                            <li>Ottimizzazione menu e pricing</li>
+                            <li>Gestione mercato interno</li>
+                            <li>Long-term planning</li>
+                        </ul>
+                    </div>
+                    <div class="info-card">
+                        <h4>4️⃣ MCP Tool Orchestrator</h4>
+                        <ul>
+                            <li>Chiamate MCP via datapizza-ai</li>
+                            <li>Rate limiting management</li>
+                            <li>Error handling e retry</li>
+                            <li>Tool call validation per fase</li>
+                        </ul>
+                    </div>
+                    <div class="info-card">
+                        <h4>5️⃣ LLM Agent (datapizza-ai)</h4>
+                        <ul>
+                            <li>OpenAILikeClient con Regolo.ai</li>
+                            <li>Tool calling per decisioni complesse</li>
+                            <li>Prompt engineering per strategie</li>
+                            <li>Memory management</li>
+                        </ul>
+                    </div>
+                    <div class="info-card">
+                        <h4>6️⃣ Data Layer</h4>
+                        <ul>
+                            <li>GET /recipes (ricette disponibili)</li>
+                            <li>GET /restaurants (altri ristoranti)</li>
+                            <li>GET /bid_history (storico aste)</li>
+                            <li>GET /market/entries (mercato interno)</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h3>🔄 Loop Principale</h3>
+
+                <div class="flow-box">
+                    <strong>1. Inizializzazione</strong>
+                    <ul>
+                        <li>Caricare configurazione (API key, restaurant ID)</li>
+                        <li>Inizializzare client datapizza-ai</li>
+                        <li>Aprire connessione SSE</li>
+                        <li>Caricare dati statici (ricette)</li>
+                    </ul>
+                </div>
+
+                <div class="arrow">↓</div>
+
+                <div class="flow-box">
+                    <strong>2. Event Loop (asincrono)</strong>
+                    <ul>
+                        <li>Ascoltare eventi SSE in background</li>
+                        <li>Dispatchare eventi a handler specifici</li>
+                        <li>Mantenere stato sincronizzato</li>
+                    </ul>
+                </div>
+
+                <div class="arrow">↓</div>
+
+                <div class="flow-box">
+                    <strong>3. Decision Loop (per fase)</strong>
+                    <ul>
+                        <li><strong>speaking:</strong> Negoziare, definire strategia turno, impostare menu</li>
+                        <li><strong>closed_bid:</strong> Analizzare fabbisogni, calcolare bid ottimali, inviare offerte</li>
+                        <li><strong>waiting:</strong> Verificare ingredienti ottenuti, aggiustare menu, mercato interno</li>
+                        <li><strong>serving:</strong> Gestire code clienti, preparare/servire piatti, monitorare intolleranze</li>
+                    </ul>
+                </div>
+
+                <h3>🎯 Pattern Chiave</h3>
+
+                <div class="info-card">
+                    <h4>Long-term Planning</h4>
+                    <p>Durante Run Ufficiale (no reset):</p>
+                    <ul>
+                        <li>Accumulare dati su: pattern di bidding altri team, clientela effettiva, performance piatti</li>
+                        <li>Adattare strategie in base a storico</li>
+                        <li>Bilanciare esplorazione (nuove ricette) vs exploitation (ricette che funzionano)</li>
+                    </ul>
+                </div>
+
+                <div class="info-card">
+                    <h4>Memory Management</h4>
+                    <p>Serve memoria persistente tra turni:</p>
+                    <ul>
+                        <li>Storico performance per ricetta</li>
+                        <li>Profilo altri ristoranti (aggressività bidding, menu tipico)</li>
+                        <li>Accordi/alleanze con altri team</li>
+                        <li>Pattern di domanda clienti</li>
+                    </ul>
+                </div>
+
+                <div class="info-card">
+                    <h4>Rate Limiting Strategy</h4>
+                    <p>Ottimizzare chiamate MCP (429 = troppo frequenti):</p>
+                    <ul>
+                        <li>Raggruppare decisioni (es. menu completo, non una ricetta alla volta)</li>
+                        <li>Cache locale stato ristorante</li>
+                        <li>Prioritizzare tool call critiche (serve_dish > send_message)</li>
+                    </ul>
+                </div>
+
+                <div class="critical">
+                    <h4>⚠️ Golden Run Requirements</h4>
+                    <p>L'agente deve funzionare <strong>completamente autonomo</strong>:</p>
+                    <ul>
+                        <li>✅ Gestione errori robusta (retry, fallback)</li>
+                        <li>✅ Riconnessione SSE automatica</li>
+                        <li>✅ Strategie conservative quando info incompleta</li>
+                        <li>✅ No human in the loop</li>
+                        <li>✅ Logging dettagliato per debug post-mortem</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        function showFlow(flowId) {
+            // Hide all flows
+            const flows = document.querySelectorAll('.flow-container');
+            flows.forEach(flow => flow.classList.remove('active'));
+
+            // Remove active from all tabs
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(tab => tab.classList.remove('active'));
+
+            // Show selected flow
+            document.getElementById(flowId).classList.add('active');
+
+            // Set active tab
+            event.target.classList.add('active');
+        }
+    </script>
+</body>
+</html>
