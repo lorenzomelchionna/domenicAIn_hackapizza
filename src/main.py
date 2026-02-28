@@ -62,8 +62,9 @@ async def main() -> None:
         state_updater.refresh_restaurant(state)
         if phase in ("waiting", "closed_bid"):
             state_updater.refresh_meals(state)
-        if phase != "stopped":
-            state_updater.refresh_market(state)
+        # Market refresh disabled for MVP (Market Broker inactive)
+        # if phase != "stopped":
+        #     state_updater.refresh_market(state)
         if phase == "speaking":
             state_updater.refresh_restaurants(state)
         ctx = state.summary()
@@ -77,12 +78,20 @@ async def main() -> None:
             append_event("ERROR", f"orchestrator failed: {e}")
 
     def run_maitre_for_client(data: dict[str, Any]) -> None:
+        state_updater.refresh_restaurant(state)  # refresh inventory
         state_updater.refresh_meals(state)
         state_updater.sync_pending_clients(state)
         ctx = state.summary()
         client_name = data.get("clientName", "")
         order_text = data.get("orderText", "")
-        msg = f"A new client arrived: {client_name}. Order: {order_text}\n\nContext:\n{ctx}\n\nMatch to menu, check intolerances, call prepare_dish."
+        intolerances = data.get("intolerances", [])
+        msg = (
+            f"A new client arrived: {client_name}.\n"
+            f"Order: {order_text}\n"
+            f"Intolerances: {intolerances}\n\n"
+            f"Context:\n{ctx}\n\n"
+            f"Match the order to a menu item. Check intolerances. If valid, call prepare_dish."
+        )
         try:
             maitre_agent.run(msg)
         except Exception as e:
@@ -93,7 +102,11 @@ async def main() -> None:
         state_updater.refresh_meals(state)
         state_updater.sync_pending_clients(state)
         ctx = state.summary()
-        msg = f"Dish ready: {dish}. Call serve_dish with the correct client_id.\n\nContext:\n{ctx}"
+        msg = (
+            f"Dish ready: {dish}.\n\n"
+            f"Context:\n{ctx}\n\n"
+            f"Find the client_id from the Pending clients list and call serve_dish(dish_name, client_id)."
+        )
         try:
             maitre_agent.run(msg)
         except Exception as e:

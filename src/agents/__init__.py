@@ -17,13 +17,13 @@ def create_all_agents(client, mcp_client, phase_getter, state_getter=None):
     diplomatico = create_diplomatico(client, [tools_by_name["send_message"]])
     menu_decider_pre_bid = create_menu_decider_pre_bid(
         client,
-        [tools_by_name["save_menu"], tools_by_name["get_recipes"], tools_by_name["get_inventory"]],
+        [tools_by_name["get_recipes"], tools_by_name["save_draft_menu"]],
     )
     menu_decider_post_bid = create_menu_decider_post_bid(
         client,
-        [tools_by_name["save_menu"], tools_by_name["get_recipes"], tools_by_name["get_inventory"]],
+        [tools_by_name["save_menu"], tools_by_name["get_recipes"], tools_by_name["get_inventory"], tools_by_name["get_draft_menu"]],
     )
-    auction_broker = create_auction_broker(client, [tools_by_name["closed_bid"]])
+    auction_broker = create_auction_broker(client, [tools_by_name["closed_bid"], tools_by_name["get_draft_menu"]])
     market_broker = create_market_broker(
         client,
         [
@@ -37,14 +37,16 @@ def create_all_agents(client, mcp_client, phase_getter, state_getter=None):
         [tools_by_name["prepare_dish"], tools_by_name["serve_dish"]],
     )
 
+    # MVP: Market Broker excluded from can_call — only core loop agents active
     sub_agents = [
         diplomatico,
         menu_decider_pre_bid,
         menu_decider_post_bid,
         auction_broker,
-        market_broker,
+        # market_broker,  # DISABLED for MVP
         maitre,
     ]
     restaurant_manager = create_restaurant_manager(client, sub_agents, [tools_by_name["update_restaurant_is_open"]])
 
     return restaurant_manager, sub_agents
+
