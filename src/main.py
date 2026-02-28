@@ -1,11 +1,13 @@
 """Hackapizza 2.0 multi-agent restaurant - main entry point."""
 import asyncio
+from datetime import datetime
 from typing import Any
 
 from datapizza.clients.openai_like import OpenAILikeClient
 
 from src.config import BASE_URL, REGOLO_API_KEY, REGOLO_BASE_URL, REGOLO_MODEL, TEAM_API_KEY, TEAM_ID, validate_config
 from src.logging_config import setup_loggers
+from src.monitor_state import write_monitor_state
 from src.state import GameState, StateUpdater
 from src.sse import listen, log
 from src.tools import MCPClient
@@ -37,6 +39,24 @@ async def main() -> None:
     maitre_agent = next(a for a in sub_agents if a.name == "maitre")
 
     event_queue: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue()
+    event_log: list[dict[str, Any]] = []
+
+    def append_event(tag: str, message: str, data: dict[str, Any] | None = None) -> None:
+        event_log.append({
+            "tag": tag,
+            "message": message,
+            "ts": datetime.now().isoformat(),
+            **(data or {}),
+        })
+
+    async def state_writer_task() -> None:
+        """Periodically write state to file for Streamlit dashboard."""
+        while True:
+            await asyncio.sleep(2)
+            try:
+                write_monitor_state(state, event_log)
+            except Exception as e:
+                log("MONITOR", f"write failed: {e}")
 
     def run_orchestrator_for_phase(phase: str) -> None:
         state_updater.refresh_restaurant(state)
@@ -51,8 +71,10 @@ async def main() -> None:
         try:
             resp = restaurant_manager.run(msg)
             log("AGENT", f"orchestrator response: {resp.text[:200] if resp and resp.text else 'ok'}")
+            append_event("AGENT", f"orchestrator phase={phase}", {"response_preview": (resp.text[:150] if resp and resp.text else "ok")})
         except Exception as e:
             log("ERROR", f"orchestrator failed: {e}")
+            append_event("ERROR", f"orchestrator failed: {e}")
 
     def run_maitre_for_client(data: dict[str, Any]) -> None:
         state_updater.refresh_meals(state)
@@ -84,38 +106,52 @@ async def main() -> None:
                 state.turn_id = event_data.get("turn_id", 0)
                 state_updater.refresh_recipes(state)
                 log("EVENT", f"game started turn_id={state.turn_id}")
+                append_event("EVENT", "game_started", {"turn_id": state.turn_id})
             elif event_type == "game_phase_changed":
                 phase = event_data.get("phase", "unknown")
                 state.phase = phase
                 log("EVENT", f"phase -> {phase}")
+                append_event("EVENT", f"phase -> {phase}", {"phase": phase})
                 if phase != "stopped":
                     await asyncio.get_event_loop().run_in_executor(None, run_orchestrator_for_phase, phase)
             elif event_type == "client_spawned":
                 log("EVENT", f"client={event_data.get('clientName')} order={event_data.get('orderText')}")
+                append_event("EVENT", f"client={event_data.get('clientName')} order={event_data.get('orderText')}", event_data)
                 await asyncio.get_event_loop().run_in_executor(None, run_maitre_for_client, event_data)
             elif event_type == "preparation_complete":
                 log("EVENT", f"dish ready: {event_data.get('dish')}")
+                append_event("EVENT", f"dish ready: {event_data.get('dish')}", event_data)
                 await asyncio.get_event_loop().run_in_executor(None, run_maitre_for_serve, event_data)
             elif event_type == "game_reset":
                 log("EVENT", "game reset")
+                append_event("EVENT", "game reset")
             elif event_type == "message":
                 log("EVENT", f"message from {event_data.get('sender')}")
+                append_event("EVENT", f"message from {event_data.get('sender')}", event_data)
             elif event_type == "new_message":
                 log("EVENT", f"new_message received")
+                append_event("EVENT", "new_message received", event_data)
 
     async def dispatch(event_type: str, event_data: dict[str, Any]) -> None:
         await event_queue.put((event_type, event_data))
 
     log("INIT", f"team={TEAM_ID} base_url={BASE_URL}")
     state_updater.refresh_recipes(state)
+    append_event("INIT", f"team={TEAM_ID} base_url={BASE_URL}")
 
     processor = asyncio.create_task(process_events())
+    writer = asyncio.create_task(state_writer_task())
     try:
         await listen(BASE_URL, TEAM_API_KEY, TEAM_ID, dispatch)
     finally:
         processor.cancel()
+        writer.cancel()
         try:
             await processor
+        except asyncio.CancelledError:
+            pass
+        try:
+            await writer
         except asyncio.CancelledError:
             pass
 

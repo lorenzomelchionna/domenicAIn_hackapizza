@@ -65,6 +65,15 @@ domenicAIn_hackapizza/
 1. Copy `.env.example` to `.env` and set `TEAM_ID`, `TEAM_API_KEY`, `REGOLO_API_KEY`
 2. Run: `python run.py` (from repo root)
 
+### Monitoring with Streamlit
+
+To monitor the system in a web dashboard instead of the terminal:
+
+1. In one terminal: `python run.py` (start the game)
+2. In another terminal: `streamlit run streamlit_app.py`
+
+The dashboard shows phase, turn, balance, reputation, menu, inventory, market entries, and a live event log. It auto-refreshes every 3 seconds.
+
 ## Git Flow
 
 We use a simple **Git Flow** workflow for collaborative coding:

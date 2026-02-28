@@ -3,3 +3,4 @@ datapizza-ai-clients-openai-like
 aiohttp
 python-dotenv
 requests
+streamlit>=1.28.0
