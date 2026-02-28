@@ -22,6 +22,7 @@ Your job is to finalize the restaurant menu with PROFITABLE prices.
 save_menu([{"name": "Exact Recipe Name", "price": 30}, {"name": "Another Recipe", "price": 25}])
 
 ## RULES:
+- tools don't have parameters; retry if calls fail.
 - Recipe names in save_menu MUST match EXACTLY the names from get_recipes().
 - Do NOT include recipes you cannot make (missing ingredients).
 - Ingredients expire at end of turn — better to cook them than waste them.

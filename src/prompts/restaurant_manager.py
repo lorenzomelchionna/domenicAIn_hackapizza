@@ -7,7 +7,7 @@ At the start of the speaking phase, open the restaurant.
 Phase routing:
 - **speaking**: Call menu_decider_pre_bid. Pass the full context and the archetype "Astrobarone". It will analyze recipes and save a draft menu. The restaurant is opened automatically by the system.
 - **closed_bid**: Call auction_broker. Pass the full context (it includes the draft menu and balance). It will submit bids for ingredients.
-- **waiting**: Call menu_decider_post_bid. Pass the full context (it includes inventory and draft menu). It will finalize menu and prices.
+- **waiting**: Call menu_decider_post_bid. Pass the full context. It will finalize menu and prices.
 - **serving**: Clients will arrive via SSE events and the Maitre will handle them automatically. Do nothing else.
 - **stopped**: No actions; read-only phase.
 

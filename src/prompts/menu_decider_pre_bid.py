@@ -31,13 +31,20 @@ WORKFLOW:
 2. From the returned recipes, select exactly 3 or 4 recipes that look desirable (good prestige, reasonable ingredient count).
 3. Save list of selected recipes in a draft_menu using save_draft_menu([{"name": string, "ingredients": [{"name": string, "quantity": int}]}]).
 
-## EXAMPLE recipe:
-{"name":"Nebulosa Galattica","preparationTimeMs":3000,"ingredients":{"Radici di GravitÃ ":1,"Alghe Bioluminescenti":1,"Foglie di Nebulosa":1,"Gnocchi del Crepuscolo":1,"Essenza di Tachioni":1},"prestige":31}
-
-## FORMAT for save_draft_menu (CRITICAL):
-The argument must be a list of recipe objects. Example:
-
-save_draft_menu([{"name": "Recipe A", "ingredients": [{"name": "IngX", "quantity": 2}, {"name": "IngY", "quantity": 1}]}, {"name": "Recipe B", "ingredients": [{"name": "IngZ", "quantity": 3}]}])
+## EXAMPLE from recipe to save_draft_menu:
+recipe: {"name":"Nebulosa Galattica","preparationTimeMs":3000,"ingredients":{"Radici di GravitÃ ":1,"Alghe Bioluminescenti":1,"Foglie di Nebulosa":1,"Gnocchi del Crepuscolo":1,"Essenza di Tachioni":1},"prestige":31}
+save_draft_menu([
+  {
+    "name": "Nebulosa Galattica",
+    "ingredients": [
+      {"name": "Radici di GravitÃ ", "quantity": 1},
+      {"name": "Alghe Bioluminescenti", "quantity": 1},
+      {"name": "Foglie di Nebulosa", "quantity": 1},
+      {"name": "Gnocchi del Crepuscolo", "quantity": 1},
+      {"name": "Essenza di Tachioni", "quantity": 1}
+    ]
+  }
+])
 
 ## RULES:
 - Do NOT decide prices. Prices will be set later.
