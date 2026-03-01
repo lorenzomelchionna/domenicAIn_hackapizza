@@ -30,9 +30,6 @@ DB_PATH = os.getenv("HACKAPIZZA_DB_PATH", "data/hackapizza.db")
 # Default target archetype when blog does not identify one (menu_decider_pre_bid format)
 DEFAULT_ARCHETYPE = "Astrobarone"
 
-# Default sentiment when the blog sentiment agent cannot classify the post
-DEFAULT_SENTIMENT = "default"
-
 # Phase-to-agent mapping for extensibility (MVP: market_broker disabled)
 # Analyst runs in speaking phase AFTER menu_decider_pre_bid to analyze ingredients needed
 PHASE_AGENTS = {

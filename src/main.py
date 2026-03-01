@@ -5,7 +5,7 @@ from typing import Any
 
 from datapizza.clients.openai_like import OpenAILikeClient
 
-from src.blog_sentiment import run_sentiment_agent
+from src.blog_sentiment import run_blog_insight_agent
 from src.config import BASE_URL, DB_PATH, REGOLO_API_KEY, REGOLO_BASE_URL, REGOLO_MODEL, TEAM_API_KEY, TEAM_ID, validate_config
 from src.logging_config import setup_loggers
 from src.monitor_state import write_monitor_state
@@ -81,14 +81,14 @@ async def main() -> None:
             log("DATA", f"collected initial data for turn {state.turn_id}")
         except Exception as e:
             log("ERROR", f"data collection failed: {e}")
-        # 4. Run blog sentiment agent to classify market mood
+        # 4. Run blog insight agent to extract strategic guidance
         try:
-            sentiment, _ = run_sentiment_agent(post_index=0)
-            state.blog_sentiment = sentiment or "default"
-            log("SENTIMENT", f"identified blog sentiment: {state.blog_sentiment}")
+            insight = run_blog_insight_agent(post_index=0)
+            state.blog_insight = insight or None
+            log("BLOG", f"blog insight: {(state.blog_insight or '')[:120]}")
         except Exception as e:
-            log("ERROR", f"sentiment agent failed: {e}")
-            state.blog_sentiment = "default"
+            log("ERROR", f"blog insight agent failed: {e}")
+            state.blog_insight = None
         # 5. Run orchestrator for speaking/pre-bid
         ctx = state.summary()
         msg = f"Current phase: speaking. Execute phase-specific tasks.\n\nContext:\n{ctx}"
