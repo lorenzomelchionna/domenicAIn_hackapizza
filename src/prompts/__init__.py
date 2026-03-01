@@ -7,6 +7,7 @@ from .auction_broker import SYSTEM_PROMPT as AUCTION_BROKER_PROMPT
 from .market_broker import SYSTEM_PROMPT as MARKET_BROKER_PROMPT
 from .maitre import SYSTEM_PROMPT as MAITRE_PROMPT
 from .analyst import SYSTEM_PROMPT as ANALYST_PROMPT
+from .pricing_analyst import SYSTEM_PROMPT as PRICING_ANALYST_PROMPT
 
 __all__ = [
     "RESTAURANT_MANAGER_PROMPT",
@@ -17,4 +18,5 @@ __all__ = [
     "MARKET_BROKER_PROMPT",
     "MAITRE_PROMPT",
     "ANALYST_PROMPT",
+    "PRICING_ANALYST_PROMPT",
 ]

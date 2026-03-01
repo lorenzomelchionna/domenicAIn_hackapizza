@@ -7,6 +7,7 @@ from .auction_broker import create_auction_broker
 from .market_broker import create_market_broker
 from .maitre import create_maitre
 from .analyst import create_analyst
+from .pricing_analyst import create_pricing_analyst
 
 
 def create_all_agents(client, mcp_client, phase_getter, state_getter=None, db_path=None):
@@ -35,6 +36,8 @@ def create_all_agents(client, mcp_client, phase_getter, state_getter=None, db_pa
 
     diplomatico = create_diplomatico(client, [tools_by_name["send_message"]])
     menu_decider_pre_bid = create_menu_decider_pre_bid(client, prebid_tools)
+    
+    # Menu Decider Post-Bid now also reads suggested_prices from Pricing Analyst
     menu_decider_post_bid = create_menu_decider_post_bid(
         client,
         [
@@ -43,6 +46,7 @@ def create_all_agents(client, mcp_client, phase_getter, state_getter=None, db_pa
             tools_by_name["get_inventory"],
             tools_by_name["get_draft_menu"],
             tools_by_name["calculate_suggested_prices"],
+            tools_by_name["get_suggested_prices"],  # From Pricing Analyst
         ],
     )
     auction_broker = create_auction_broker(client, [
@@ -65,8 +69,11 @@ def create_all_agents(client, mcp_client, phase_getter, state_getter=None, db_pa
     )
 
     analyst = None
+    pricing_analyst = None
     if db_path:
         _, analyst_tools_by_name = create_analyst_tools(db_path, state_getter)
+        
+        # Pre-bid analyst: recommends bid prices for ingredients
         analyst = create_analyst(
             client,
             [
@@ -75,19 +82,38 @@ def create_all_agents(client, mcp_client, phase_getter, state_getter=None, db_pa
                 tools_by_name["save_suggested_bids"],
             ],
         )
+        
+        # Post-bid pricing analyst: recommends selling prices based on competitor menus
+        pricing_analyst = create_pricing_analyst(
+            client,
+            [
+                tools_by_name["get_draft_menu"],
+                tools_by_name["get_actual_bids"],
+                analyst_tools_by_name["get_competitor_menu_prices"],
+                tools_by_name["save_suggested_prices"],
+            ],
+        )
 
-    # MVP: Market Broker excluded from can_call — only core loop agents active
+    # Agent execution order:
+    # 1. diplomatico (speaking phase)
+    # 2. menu_decider_pre_bid (speaking phase - selects recipes)
+    # 3. analyst (pre-bid - recommends bid prices)
+    # 4. auction_broker (closed_bid phase - executes bids)
+    # 5. pricing_analyst (post-bid - recommends selling prices based on competitors)
+    # 6. menu_decider_post_bid (waiting phase - finalizes menu with prices)
+    # 7. maitre (serving phase - serves clients)
     sub_agents = [
         diplomatico,
         menu_decider_pre_bid,
         analyst,
-        menu_decider_post_bid,
         auction_broker,
+        pricing_analyst,  # NEW: runs after auction, before menu publish
+        menu_decider_post_bid,
         # market_broker,  # DISABLED for MVP
         maitre,
     ]
     
-    # Filter out None agents (e.g., analyst when db_path not provided)
+    # Filter out None agents (e.g., analyst/pricing_analyst when db_path not provided)
     sub_agents = [a for a in sub_agents if a is not None]
     
     restaurant_manager = create_restaurant_manager(client, sub_agents, [tools_by_name["update_restaurant_is_open"]])

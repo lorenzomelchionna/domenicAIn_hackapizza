@@ -306,6 +306,59 @@ def create_analyst_tools(db_path: str | Path, state_getter: Callable | None = No
         except Exception as e:
             return json.dumps({"error": str(e)})
 
+    @tool
+    def get_competitor_menu_prices(dish_names_json: str | None = None, window_size: int = 2) -> str:
+        """Get competitor pricing for specific dishes from the last N turns.
+
+        EXCLUDES our own restaurant from results. Use this to see what OTHER restaurants
+        charge for the same dishes you plan to offer. Essential for competitive pricing.
+
+        Args:
+            dish_names_json (str | None): Optional JSON array of dish names to filter.
+                If provided, only returns pricing for those specific dishes.
+                If None, returns all dishes from competitor menus.
+            window_size (int): Number of recent turns to analyze (default: 2).
+
+        Returns:
+            JSON array sorted by dish_name:
+            [{
+                dish_name: str,
+                competitor_count: int (how many competitors offer this dish),
+                avg_price: float,
+                min_price: float,
+                max_price: float,
+                price_details: [{restaurant: str, restaurant_id: int, price: float, turn_id: int}, ...]
+            }, ...]
+        """
+        try:
+            # Get our restaurant_id from state to exclude ourselves
+            exclude_id = None
+            if state_getter:
+                state = state_getter()
+                exclude_id = state.restaurant_id if state.restaurant_id else None
+            
+            all_menu_data = queries.get_competitor_menu_prices(
+                db_path, 
+                exclude_restaurant_id=exclude_id,
+                window_size=window_size
+            )
+            
+            filter_dishes = None
+            if dish_names_json:
+                filter_dishes = set(json.loads(dish_names_json))
+            
+            results = []
+            for item in all_menu_data:
+                dish_name = item.get("dish_name", "")
+                if filter_dishes and dish_name not in filter_dishes:
+                    continue
+                
+                results.append(item)
+            
+            return json.dumps(results, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
     all_tools = [
         get_bid_statistics,
         get_winning_bid_statistics,
@@ -320,6 +373,7 @@ def create_analyst_tools(db_path: str | Path, state_getter: Callable | None = No
         get_dish_profitability,
         get_strategic_dish_ranking,
         get_menu_popularity,
+        get_competitor_menu_prices,
     ]
     by_name = {t.__name__: t for t in all_tools}
     return all_tools, by_name

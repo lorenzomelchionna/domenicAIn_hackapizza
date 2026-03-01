@@ -31,6 +31,9 @@ class GameState:
     # Broker output: actual auction results. [{ingredient, price, success}, ...]
     # Populated by the broker after closed_bid. Price = actual paid per unit; success = whether purchase went through.
     actual_bids: list[dict[str, Any]] = field(default_factory=list)
+    # Pricing Analyst output: suggested selling prices per dish. [{dish, price, reason}, ...]
+    # Populated by pricing analyst (post-bid, before menu publish). Menu Decider Post-Bid uses these.
+    suggested_prices: list[dict[str, Any]] = field(default_factory=list)
     # Target archetype from blog (Esploratore_Galattico, Astrobarone, Saggi_del_Cosmo, Famiglie_Orbitali).
     # Set by blog agent in speaking phase. None = use default (Astrobarone).
     # DEPRECATED: kept for backward compat; prefer blog_insight.
@@ -57,6 +60,7 @@ class GameState:
             #f"Recipes: {self.recipes}",
             f"Suggested bids (ingredient -> price/unit): {dict(self.suggested_bids) if self.suggested_bids else 'none'}",
             f"Actual bids (auction results): {self.actual_bids if self.actual_bids else 'none'}",
+            f"Suggested prices (dish -> price): { {p['dish']: p['price'] for p in self.suggested_prices} if self.suggested_prices else 'none'}",
             f"Pending clients: {self.pending_clients}",
             f"Prepared dishes: {self.prepared_dishes}",
         ]

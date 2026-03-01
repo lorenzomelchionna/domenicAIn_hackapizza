@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Callable
 from datapizza.tools import tool
 from pydantic import ValidationError
 
-from src.schemas import Recipe, MenuItem, SuggestedBid, AuctionBid, ActualBid
+from src.schemas import Recipe, MenuItem, SuggestedBid, AuctionBid, ActualBid, SuggestedPrice
 
 if TYPE_CHECKING:
     from .mcp_client import MCPClient
@@ -463,6 +463,50 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
 
         return json.dumps(result, ensure_ascii=False)
 
+    @tool
+    def save_suggested_prices(*, suggested_prices: list[dict[str, Any]]) -> str:
+        """Persist the Pricing Analyst's recommended selling prices to shared state.
+
+        The Pricing Analyst calls this after analyzing competitor menus. The Menu Decider
+        Post-Bid will later read these values via get_suggested_prices() to decide final
+        menu prices.
+
+        Args:
+            suggested_prices: List of price recommendations, each with:
+                - dish (str): exact dish name from draft menu
+                - price (float): recommended selling price
+                - reason (str): brief explanation (optional, for debugging)
+
+        Returns:
+            Confirmation string listing saved dishes, or an error message.
+        """
+        if state_getter is None:
+            return "Error: state_getter not configured"
+        try:
+            validated = [SuggestedPrice(**p) for p in suggested_prices]
+        except ValidationError as e:
+            return f"Error: invalid price format - {e}"
+        state = state_getter()
+        state.suggested_prices = [p.model_dump() for p in validated]
+        return f"Suggested prices saved for {len(validated)} dishes: {[p.dish for p in validated]}"
+
+    @tool
+    def get_suggested_prices() -> str:
+        """Return the Pricing Analyst's recommended selling prices for this turn.
+
+        Read these before setting final menu prices in save_menu(). If the Pricing Analyst
+        has run, these values are calibrated to competitor pricing and should be preferred.
+        If the list is empty, fall back to calculate_suggested_prices() for cost-based pricing.
+
+        Returns:
+            JSON array: [{dish, price, reason}, ...]
+            Empty array if no suggestions have been saved this turn.
+        """
+        if state_getter is None:
+            return json.dumps({"error": "state_getter not configured"})
+        state = state_getter()
+        return json.dumps(state.suggested_prices, ensure_ascii=False)
+
     all_tools = [
         closed_bid,
         save_menu,
@@ -484,6 +528,8 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         save_actual_bids,
         get_actual_bids,
         calculate_suggested_prices,
+        save_suggested_prices,
+        get_suggested_prices,
     ]
     by_name = {t.__name__: t for t in all_tools}
     return all_tools, by_name

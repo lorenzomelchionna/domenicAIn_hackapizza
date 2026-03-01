@@ -48,3 +48,10 @@ class PendingClient(BaseModel):
     clientName: str = ""
     orderText: str = ""
     intolerances: list[str] = Field(default_factory=list)
+
+
+class SuggestedPrice(BaseModel):
+    """Pricing Analyst output: recommended selling price per dish."""
+    dish: str
+    price: float = Field(gt=0, description="Suggested selling price")
+    reason: str = Field(default="", description="Brief explanation for the price")

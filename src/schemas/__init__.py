@@ -7,6 +7,7 @@ from .game_data import (
     AuctionBid,
     ActualBid,
     PendingClient,
+    SuggestedPrice,
 )
 
 __all__ = [
@@ -17,4 +18,5 @@ __all__ = [
     "AuctionBid",
     "ActualBid",
     "PendingClient",
+    "SuggestedPrice",
 ]

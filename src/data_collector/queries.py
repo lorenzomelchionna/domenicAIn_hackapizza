@@ -727,3 +727,117 @@ def get_strategic_dish_ranking(db_path: str | Path, recipes: list[dict], window_
     
     profitability.sort(key=lambda x: x["final_score"], reverse=True)
     return profitability
+
+
+def get_competitor_menu_prices(
+    db_path: str | Path,
+    exclude_restaurant_id: int | None = None,
+    window_size: int = DEFAULT_WINDOW_SIZE,
+) -> list[dict[str, Any]]:
+    """Get competitor menu prices from the last N turns, excluding own restaurant.
+
+    Analyzes restaurant_snapshots.menu_json to extract dish prices from competitors.
+    Uses the most recent snapshot per restaurant within the window.
+
+    Args:
+        db_path: Path to SQLite database.
+        exclude_restaurant_id: Our restaurant ID to exclude from results.
+        window_size: Number of recent turns to include (default: 2).
+
+    Returns:
+        List of dicts with:
+        - dish_name: name of the dish
+        - competitor_count: how many competitors offer this dish
+        - avg_price: average price across competitors
+        - min_price: lowest competitor price
+        - max_price: highest competitor price
+        - price_details: [{restaurant, restaurant_id, price, turn_id}, ...]
+    """
+    import json as _json
+
+    conn = get_connection(db_path)
+    try:
+        recent_turns = _get_recent_turns_any(conn, window_size)
+        if not recent_turns:
+            return []
+
+        placeholders = ",".join("?" * len(recent_turns))
+        
+        # Get latest snapshot per restaurant within the window, excluding our restaurant
+        query = f"""
+            SELECT rs.restaurant_id, rs.name, rs.menu_json, rs.turn_id
+            FROM restaurant_snapshots rs
+            INNER JOIN (
+                SELECT restaurant_id, MAX(turn_id) as max_turn
+                FROM restaurant_snapshots
+                WHERE menu_json IS NOT NULL
+                  AND turn_id IN ({placeholders})
+                  {"AND restaurant_id != ?" if exclude_restaurant_id else ""}
+                GROUP BY restaurant_id
+            ) latest ON rs.restaurant_id = latest.restaurant_id AND rs.turn_id = latest.max_turn
+        """
+        
+        params = list(recent_turns)
+        if exclude_restaurant_id:
+            params.append(exclude_restaurant_id)
+        
+        cursor = conn.execute(query, params)
+
+        dish_data: dict[str, dict] = {}
+
+        for row in cursor.fetchall():
+            menu_json = row["menu_json"]
+            restaurant_name = row["name"]
+            restaurant_id = row["restaurant_id"]
+            turn_id = row["turn_id"]
+
+            if not menu_json:
+                continue
+
+            try:
+                menu = _json.loads(menu_json)
+                items = menu.get("items", []) if isinstance(menu, dict) else menu
+
+                for item in items:
+                    if isinstance(item, dict):
+                        dish_name = item.get("name", "")
+                        price = item.get("price", 0)
+                    else:
+                        continue
+
+                    if not dish_name:
+                        continue
+
+                    if dish_name not in dish_data:
+                        dish_data[dish_name] = {
+                            "dish_name": dish_name,
+                            "prices": [],
+                            "details": [],
+                        }
+
+                    dish_data[dish_name]["prices"].append(price)
+                    dish_data[dish_name]["details"].append({
+                        "restaurant": restaurant_name,
+                        "restaurant_id": restaurant_id,
+                        "price": price,
+                        "turn_id": turn_id,
+                    })
+            except (_json.JSONDecodeError, TypeError):
+                continue
+
+        results = []
+        for dish_name, data in dish_data.items():
+            prices = data["prices"]
+            results.append({
+                "dish_name": dish_name,
+                "competitor_count": len(data["details"]),
+                "avg_price": round(sum(prices) / len(prices), 2) if prices else 0,
+                "min_price": min(prices) if prices else 0,
+                "max_price": max(prices) if prices else 0,
+                "price_details": data["details"],
+            })
+
+        results.sort(key=lambda x: x["dish_name"])
+        return results
+    finally:
+        conn.close()
