@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Hackapizza — Agentic Flow</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #ffffff;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  width: 1320px;
+  height: 780px;
+  overflow: hidden;
+  position: relative;
+}
+
+svg#bg {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ─── colour palette ──────────────────────────────── */
+:root {
+  --violet:  #4a2d9c;
+  --indigo:  #3a4db5;
+  --blue:    #1e5faa;
+  --sky:     #1d7fc4;
+  --teal:    #1a7a8c;
+  --rose:    #a83258;
+  --crimson: #b52a2a;
+  --dim:     #8899aa;
+  --ext-bg:  #e8f0fb;
+  --ext-bd:  #93b4db;
+  --phase:   #5a4a7a;
+}
+
+/* ─── agent nodes (large) ─────────────────────────── */
+.node {
+  position: absolute;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #fff;
+  z-index: 10;
+  box-shadow: 0 4px 18px rgba(0,0,0,.18);
+  padding: 10px 12px;
+  line-height: 1.2;
+}
+.node .ico   { font-size: 1.75em; margin-bottom: 4px; }
+.node .lbl   { font-size: .78em; font-weight: 800; letter-spacing: .04em; }
+.node .sub   { font-size: .60em; font-weight: 500; opacity: .88; margin-top: 3px; }
+.node .phase-tag {
+  font-size: .48em; font-weight: 700; letter-spacing: .06em;
+  background: rgba(255,255,255,.22);
+  border-radius: 8px; padding: 2px 7px;
+  margin-top: 5px; display: inline-block;
+  text-transform: uppercase;
+}
+
+/* size variants */
+.sz-xl { width:148px; height:100px; }
+.sz-lg { width:134px; height: 92px; }
+.sz-md { width:120px; height: 82px; }
+
+/* colour variants */
+.c-orch   { background: linear-gradient(140deg, var(--violet), var(--indigo)); }
+.c-speak  { background: linear-gradient(140deg, var(--blue),   var(--sky)); }
+.c-bid    { background: linear-gradient(140deg, var(--teal),   #1e9abd); }
+.c-wait   { background: linear-gradient(140deg, #2a6a3a,       #3a9a5a); }
+.c-serve  { background: linear-gradient(140deg, var(--rose),   var(--crimson)); }
+
+/* ─── external entities (small, outlined) ─────────── */
+.ext {
+  position: absolute;
+  border-radius: 40px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center;
+  background: var(--ext-bg);
+  border: 2px solid var(--ext-bd);
+  color: #1a3a5c;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0,0,0,.08);
+  padding: 8px 14px;
+  width: 108px; height: 64px;
+}
+.ext .ico  { font-size: 1.2em; }
+.ext .lbl  { font-size: .63em; font-weight: 700; margin-top: 2px; color: #1a3a5c; }
+.ext .sub  { font-size: .54em; color: #4a6a8c; }
+
+/* ─── shared state box ────────────────────────────── */
+.state-box {
+  position: absolute;
+  border-radius: 10px;
+  background: #f0f4f8;
+  border: 2px dashed #7090b0;
+  color: #2c3e50;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center;
+  z-index: 5;
+  padding: 8px 12px;
+}
+.state-box .ico { font-size: 1.1em; }
+.state-box .lbl { font-size: .62em; font-weight: 700; margin-top: 2px; }
+.state-box .sub { font-size: .53em; color: #5a7090; }
+
+/* ─── title ──────────────────────────────────────── */
+#title {
+  position: absolute;
+  top: 16px; left: 50%;
+  transform: translateX(-50%);
+  font-size: .95em; font-weight: 900;
+  color: var(--violet);
+  letter-spacing: .08em;
+  white-space: nowrap;
+  z-index: 20;
+}
+
+/* ─── legend ─────────────────────────────────────── */
+#legend {
+  position: absolute;
+  bottom: 14px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; gap: 16px; align-items: center;
+  background: #f5f5fb;
+  border: 1px solid #ccd;
+  border-radius: 30px;
+  padding: 6px 22px;
+  z-index: 20;
+}
+#legend .dot { width:11px; height:11px; border-radius:50%; display:inline-block; margin-right:5px; vertical-align:middle; }
+#legend span { font-size:.60em; color:#333; font-weight:600; }
+
+/* ─── phase section labels ───────────────────────── */
+.sec-label {
+  position: absolute;
+  font-size: .56em; font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  opacity: .45;
+  z-index: 6;
+}
+</style>
+</head>
+<body>
+
+<div id="title">HACKAPIZZA 2.0 — Knowledge Graph</div>
+
+<!-- ════════════════════════
+     EXTERNAL ENTITIES
+════════════════════════ -->
+<!-- Blog -->
+<div class="ext" id="blog" style="left:30px; top:160px;">
+  <div class="ico">📰</div>
+  <div class="lbl">Cronache del Cosmo</div>
+  <div class="sub">blog</div>
+</div>
+
+<!-- Clients -->
+<div class="ext" id="clients" style="left:30px; top:590px;">
+  <div class="ico">👨‍🚀</div>
+  <div class="lbl">Clienti</div>
+  <div class="sub">ordini · intolleranze</div>
+</div>
+
+<!-- Auction -->
+<div class="ext" id="auction" style="right:30px; top:280px;">
+  <div class="ico">🏛️</div>
+  <div class="lbl">Asta Ingredienti</div>
+  <div class="sub">closed_bid</div>
+</div>
+
+<!-- Menu (output) -->
+<div class="ext" id="menu-out" style="right:30px; top:500px;">
+  <div class="ico">🍽️</div>
+  <div class="lbl">Menu Pubblicato</div>
+  <div class="sub">visibile ai clienti</div>
+</div>
+
+<!-- Shared state -->
+<div class="state-box" id="gs" style="right:30px; top:140px; width:108px; height:68px;">
+  <div class="ico">🗄️</div>
+  <div class="lbl">Stato Condiviso</div>
+  <div class="sub">draft · bids · meals</div>
+</div>
+
+<!-- ════════════════════════
+     AGENTS
+════════════════════════ -->
+
+<!-- Restaurant Manager -->
+<div class="node sz-xl c-orch" id="rm" style="left:586px; top:82px;">
+  <div class="ico">🍽️</div>
+  <div class="lbl">Restaurant Manager</div>
+  <div class="sub">orchestratore</div>
+</div>
+
+<!-- Blog Insight Agent -->
+<div class="node sz-lg c-speak" id="blog-agent" style="left:200px; top:265px;">
+  <div class="ico">🔍</div>
+  <div class="lbl">Blog Insight Agent</div>
+  <div class="sub">strategia di turno</div>
+  <div class="phase-tag">speaking</div>
+</div>
+
+<!-- Menu Decider Pre-Bid -->
+<div class="node sz-lg c-speak" id="pre" style="left:430px; top:265px;">
+  <div class="ico">📋</div>
+  <div class="lbl">Menu Decider Pre-Bid</div>
+  <div class="sub">selezione ricette</div>
+  <div class="phase-tag">speaking</div>
+</div>
+
+<!-- Analyst -->
+<div class="node sz-lg c-speak" id="analyst" style="left:680px; top:265px;">
+  <div class="ico">📊</div>
+  <div class="lbl">Analyst</div>
+  <div class="sub">prezzi d'asta</div>
+  <div class="phase-tag">speaking</div>
+</div>
+
+<!-- Auction Broker -->
+<div class="node sz-lg c-bid" id="broker" style="left:930px; top:265px;">
+  <div class="ico">⚖️</div>
+  <div class="lbl">Auction Broker</div>
+  <div class="sub">bid ingredienti</div>
+  <div class="phase-tag">closed_bid</div>
+</div>
+
+<!-- Menu Decider Post-Bid -->
+<div class="node sz-lg c-wait" id="post" style="left:680px; top:460px;">
+  <div class="ico">💰</div>
+  <div class="lbl">Menu Decider Post-Bid</div>
+  <div class="sub">prezzi finali</div>
+  <div class="phase-tag">waiting</div>
+</div>
+
+<!-- Maitre -->
+<div class="node sz-xl c-serve" id="maitre" style="left:430px; top:580px;">
+  <div class="ico">🧑‍🍳</div>
+  <div class="lbl">Maître</div>
+  <div class="sub">gestione ordini</div>
+  <div class="phase-tag">serving</div>
+</div>
+
+<!-- ════════════════════════
+     SECTION LABELS
+════════════════════════ -->
+<div class="sec-label" style="left:180px; top:248px; color:#1e5faa;">─── speaking phase ───────────────────────────────────────────</div>
+<div class="sec-label" style="left:910px; top:248px; color:#1a7a8c;">─── closed_bid</div>
+<div class="sec-label" style="left:660px; top:443px; color:#2a6a3a;">─── waiting</div>
+<div class="sec-label" style="left:410px; top:563px; color:#a83258;">─── serving</div>
+
+<!-- ════════════════════════
+     LEGEND
+════════════════════════ -->
+<div id="legend">
+  <span><span class="dot" style="background:#4a2d9c"></span>Orchestratore</span>
+  <span><span class="dot" style="background:#1e5faa"></span>Speaking</span>
+  <span><span class="dot" style="background:#1a7a8c"></span>Closed Bid</span>
+  <span><span class="dot" style="background:#2a6a3a"></span>Waiting</span>
+  <span><span class="dot" style="background:#a83258"></span>Serving</span>
+  <span><span class="dot" style="background:#4a6a9c; border:2px solid #93b4db"></span>Entità Esterna</span>
+</div>
+
+<!-- ════════════════════════
+     SVG EDGES
+════════════════════════ -->
+<svg id="bg" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="a-orch"  markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L0,7 L9,3.5 z" fill="#4a2d9c"/></marker>
+  <marker id="a-blue"  markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L0,7 L9,3.5 z" fill="#1e5faa"/></marker>
+  <marker id="a-teal"  markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L0,7 L9,3.5 z" fill="#1a7a8c"/></marker>
+  <marker id="a-green" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L0,7 L9,3.5 z" fill="#2a6a3a"/></marker>
+  <marker id="a-red"   markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L0,7 L9,3.5 z" fill="#a83258"/></marker>
+  <marker id="a-ext"   markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L0,7 L9,3.5 z" fill="#4a7ab0"/></marker>
+  <marker id="a-gray"  markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L0,7 L9,3.5 z" fill="#7090b0"/></marker>
+</defs>
+</svg>
+
+<!-- ════════════════════════
+     EDGE LABELS
+════════════════════════ -->
+<script>
+function el(tag, attrs, text) {
+  const e = document.createElementNS?.('http://www.w3.org/2000/svg', tag) ?? document.createElement(tag);
+  for (const [k,v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (text) e.textContent = text;
+  return e;
+}
+function htmlLabel(txt, x, y, color='#444') {
+  const d = document.createElement('div');
+  d.style.cssText = `
+    position:absolute; left:${x}px; top:${y}px;
+    font-size:.54em; font-weight:700; color:${color};
+    background:rgba(255,255,255,.9);
+    padding:2px 6px; border-radius:5px;
+    z-index:15; white-space:nowrap; pointer-events:none;
+    border:1px solid ${color}33;
+  `;
+  d.textContent = txt;
+  document.body.appendChild(d);
+}
+
+function midpoint(x1,y1,x2,y2){ return [(x1+x2)/2,(y1+y2)/2]; }
+
+function box(id) {
+  const r = document.getElementById(id).getBoundingClientRect();
+  return {
+    x: r.left+r.width/2, y: r.top+r.height/2,
+    l: r.left, r: r.right, t: r.top, b: r.bottom,
+    w: r.width, h: r.height
+  };
+}
+
+const svg = document.getElementById('bg');
+
+function addPath(d, stroke, marker, dash='', w=2.2) {
+  const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+  p.setAttribute('d', d);
+  p.setAttribute('stroke', stroke);
+  p.setAttribute('stroke-width', w);
+  p.setAttribute('fill', 'none');
+  if (dash) p.setAttribute('stroke-dasharray', dash);
+  p.setAttribute('marker-end', `url(#${marker})`);
+  svg.appendChild(p);
+}
+
+function addLine(x1,y1,x2,y2, stroke, marker, dash='', w=2.2) {
+  const l = document.createElementNS('http://www.w3.org/2000/svg','line');
+  l.setAttribute('x1',x1); l.setAttribute('y1',y1);
+  l.setAttribute('x2',x2); l.setAttribute('y2',y2);
+  l.setAttribute('stroke',stroke); l.setAttribute('stroke-width',w);
+  if (dash) l.setAttribute('stroke-dasharray', dash);
+  l.setAttribute('marker-end',`url(#${marker})`);
+  svg.appendChild(l);
+}
+
+window.addEventListener('load', () => {
+  const RM     = box('rm');
+  const BA     = box('blog-agent');
+  const PRE    = box('pre');
+  const ANA    = box('analyst');
+  const BRK    = box('broker');
+  const POST   = box('post');
+  const MAI    = box('maitre');
+  const BLOG   = box('blog');
+  const CLI    = box('clients');
+  const AUC    = box('auction');
+  const MOUT   = box('menu-out');
+  const GS     = box('gs');
+
+  const ORCH  = '#4a2d9c';
+  const BLUE  = '#1e5faa';
+  const TEAL  = '#1a7a8c';
+  const GREEN = '#2a6a3a';
+  const RED   = '#a83258';
+  const EXT   = '#3a6a9c';
+  const GRAY  = '#7090b0';
+
+  /* ── RM → sub-agents (orchestrator delegates) ───────── */
+  // RM → Blog Agent
+  addPath(
+    `M ${RM.l+22} ${RM.b} C ${RM.l+22} ${BA.t-18}, ${BA.x} ${BA.t-18}, ${BA.x} ${BA.t}`,
+    ORCH, 'a-orch'
+  );
+  // RM → Pre-bid
+  addPath(
+    `M ${RM.x-20} ${RM.b} C ${RM.x-20} ${PRE.t-14}, ${PRE.x} ${PRE.t-14}, ${PRE.x} ${PRE.t}`,
+    ORCH, 'a-orch'
+  );
+  // RM → Analyst
+  addLine(RM.x, RM.b, ANA.x, ANA.t, ORCH, 'a-orch');
+  // RM → Broker (right arc)
+  addPath(
+    `M ${RM.x+30} ${RM.b} C ${RM.x+30} ${BRK.t-14}, ${BRK.x} ${BRK.t-14}, ${BRK.x} ${BRK.t}`,
+    ORCH, 'a-orch'
+  );
+  // RM → Post-bid
+  addPath(
+    `M ${RM.r-10} ${RM.y} C ${RM.r+30} ${RM.y}, ${RM.r+30} ${POST.y}, ${POST.r} ${POST.y}`,
+    ORCH, 'a-orch', '5,3'
+  );
+  // RM → Maitre (dashed – indirect, SSE-triggered)
+  addPath(
+    `M ${RM.l-10} ${RM.y} C ${RM.l-50} ${RM.y}, ${RM.l-50} ${MAI.y}, ${MAI.l} ${MAI.y}`,
+    ORCH, 'a-orch', '6,4'
+  );
+
+  /* ── external → agents ───────────────────────────────── */
+  // Blog → Blog Agent
+  addLine(BLOG.r, BLOG.y, BA.l, BA.y, EXT, 'a-ext', '', 2.5);
+  // Clients → Maitre
+  addLine(CLI.r, CLI.y, MAI.l, MAI.y+10, EXT, 'a-ext', '', 2.5);
+
+  /* ── agent → agent data flow ─────────────────────────── */
+  // Blog Agent → Pre-bid (insight → strategia ricette)
+  addLine(BA.r, BA.y, PRE.l, PRE.y, BLUE, 'a-blue', '', 2);
+  // Pre-bid → Analyst (draft_menu → analisi ingredienti)
+  addLine(PRE.r, PRE.y, ANA.l, ANA.y, BLUE, 'a-blue', '', 2);
+  // Analyst → Broker (suggested bids)
+  addLine(ANA.r, ANA.y, BRK.l, BRK.y, TEAL, 'a-teal', '', 2);
+  // Post-bid → menu-out
+  addLine(POST.r, POST.y, MOUT.l, MOUT.y, GREEN, 'a-green', '', 2);
+  // Pre-bid → Post-bid (draft_menu)
+  addPath(
+    `M ${PRE.x} ${PRE.b} C ${PRE.x} ${PRE.b+30}, ${POST.x} ${POST.t-30}, ${POST.x} ${POST.t}`,
+    BLUE, 'a-blue', '4,4', 1.8
+  );
+
+  /* ── broker ↔ auction ────────────────────────────────── */
+  addLine(BRK.r, BRK.y, AUC.l, AUC.y, TEAL, 'a-teal', '', 2.2);
+  // Auction result → broker (dashed return)
+  addPath(
+    `M ${AUC.l} ${AUC.y+12} C ${BRK.r+30} ${AUC.y+12}, ${BRK.r+30} ${BRK.b}, ${BRK.r} ${BRK.b}`,
+    TEAL, 'a-teal', '5,3', 1.6
+  );
+
+  /* ── maitre → clients (serve dish) ──────────────────── */
+  addPath(
+    `M ${MAI.l} ${MAI.b-10} C ${CLI.r+20} ${MAI.b}, ${CLI.r+20} ${CLI.y}, ${CLI.r} ${CLI.y}`,
+    RED, 'a-red', '', 2
+  );
+
+  /* ── shared state: solo RM e Maitre ─────────────────── */
+  // RM ↔ GS (bidirectional: legge e scrive contesto)
+  addPath(
+    `M ${GS.l} ${GS.y-8} C ${RM.r+20} ${GS.y-8}, ${RM.r+20} ${RM.y}, ${RM.r} ${RM.y}`,
+    GRAY, 'a-gray', '4,4', 1.8
+  );
+  addPath(
+    `M ${RM.r} ${RM.y+10} C ${RM.r+24} ${RM.y+10}, ${GS.l+24} ${GS.y+8}, ${GS.l} ${GS.y+8}`,
+    GRAY, 'a-gray', '4,4', 1.8
+  );
+  // Maitre ← GS (legge pending_clients e menu)
+  addPath(
+    `M ${GS.l} ${GS.b} C ${GS.l-20} ${MAI.r+30}, ${MAI.r+30} ${MAI.t-10}, ${MAI.r} ${MAI.t+10}`,
+    GRAY, 'a-gray', '4,4', 1.8
+  );
+
+  /* ── edge labels ─────────────────────────────────────── */
+  const [bax, bay] = midpoint(BLOG.r, BLOG.y, BA.l, BA.y);
+  htmlLabel('contenuto blog', bax - 40, bay - 16, EXT);
+
+  const [clx, cly] = midpoint(CLI.r, CLI.y, MAI.l, MAI.y+10);
+  htmlLabel('ordine · intolleranze', clx - 20, cly - 16, EXT);
+
+  const [bpx, bpy] = midpoint(BA.r, BA.y, PRE.l, PRE.y);
+  htmlLabel('insight strategico', bpx - 36, bpy - 16, BLUE);
+
+  const [pax, pay] = midpoint(PRE.r, PRE.y, ANA.l, ANA.y);
+  htmlLabel('draft_menu', pax - 26, pay - 16, BLUE);
+
+  const [abx, aby] = midpoint(ANA.r, ANA.y, BRK.l, BRK.y);
+  htmlLabel('suggested_bids', abx - 34, aby - 16, TEAL);
+
+  const [brx, bry] = midpoint(BRK.r, BRK.y, AUC.l, AUC.y);
+  htmlLabel('closed_bid()', brx - 26, bry - 16, TEAL);
+
+  htmlLabel('inventario · prezzi', POST.r + 8, POST.y - 8, GREEN);
+
+  const [mx, my] = midpoint(MAI.l, MAI.b-10, CLI.r+20, CLI.y);
+  htmlLabel('serve_dish()', mx + 20, my + 4, RED);
+
+  // Shared state labels
+  htmlLabel('legge / scrive', GS.l - 90, GS.y - 10, GRAY);
+  htmlLabel('legge contesto', GS.l - 90, MAI.t - 14, GRAY);
+
+  // Delegate labels on RM → agents arcs
+  htmlLabel('delega', RM.x - 20, RM.b + 4, ORCH);
+});
+</script>
+
+</body>
+</html>
