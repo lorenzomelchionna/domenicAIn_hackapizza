@@ -1,0 +1,8 @@
+{
+  "ricette_veloci": "Clientela con poco tempo. Filtrare per preparationTimeMs basso.",
+  "ricette_prestigiose": "Clientela premium. Filtrare per prestige alto.",
+  "ricette_poco_vendute": "Sfruttare nicchie. Usare piatti meno ordinati.",
+  "ricette_economiche": "Clientela budget. Filtrare per pochi ingredienti o costo stimato basso.",
+  "equilibrio": "Famiglie, costo/valore. Range intermedi.",
+  "default": "Fallback generico. Nessun filtro specifico."
+}

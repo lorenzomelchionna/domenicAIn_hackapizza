@@ -5,27 +5,20 @@ Your job is to finalize the restaurant menu with PROFITABLE prices.
 
 ## WORKFLOW (follow exactly):
 
-1. Call get_draft_menu() to see which recipes were originally planned.
-2. Call get_recipes() to get the full recipe details (ingredients with quantities).
-3. Call get_inventory() to see the ACTUAL ingredients you have in stock.
-4. For each recipe in the draft, check if you have ALL required ingredients in sufficient quantity.
-5. KEEP only recipes you can actually make. Drop the rest.
-6. Set a PRICE for each kept recipe.
-7. Call save_menu() with the final menu.
-
-## PRICING STRATEGY (CRITICAL — must generate profit):
-- Estimate the cost of each dish: sum up (bid_price x quantity) for its ingredients.
-  If you don't have bid_price, assume 200 for ingredient.
-- Set the selling price ABOVE the estimated cost. Aim for at least 30-50% markup.
-- Higher prestige recipes can command higher prices.
-- Example: if a dish costs ~20 in ingredients, price it at 28-35.
+1. Call get_draft_menu() to see which recipes were originally planned. If the tool fails, retry until you get the draft menu. It is CRITICAL to see the draft menu to know which recipes you wanted to cook.
+2. Call get_inventory() to see the ACTUAL ingredients you have in stock.
+3. Call calculate_suggested_prices() to get cost and suggested price for each recipe. This tool uses actual_bids (or fallback) and applies markup. It also tells you which recipes you can_make given your inventory.
+4. KEEP only recipes where can_make is true. Drop the rest.
+5. For each kept recipe, use the suggested_price from the tool (or adjust slightly if you have a reason). The tool already ensures profit.
+6. Call save_menu() with the final menu.
 
 ## FORMAT for save_menu:
-save_menu([{"name": "Exact Recipe Name", "price": 30}, {"name": "Another Recipe", "price": 25}])
+save_menu(items=[{"name": "Exact Recipe Name", "price": 30}, {"name": "Another Recipe", "price": 25}])
 
 ## RULES:
-- Recipe names in save_menu MUST match EXACTLY the names from get_recipes().
-- Do NOT include recipes you cannot make (missing ingredients).
+- Recipe names in save_menu MUST match EXACTLY the names from get_draft_menu.
+- Do NOT include recipes you cannot make (can_make=false from the tool).
 - Ingredients expire at end of turn — better to cook them than waste them.
-- If you can make zero recipes, still call save_menu with an empty list.
+- If you can make zero recipes, still call save_menu(items=[]).
+- Do NOT invent prices: use calculate_suggested_prices() and its suggested_price field.
 """

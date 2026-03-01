@@ -4,3 +4,6 @@ hackapizza_env/
 logs/
 
 **/__pycache__/
+
+test_monitoring.py
+test_monitoring_multiagent.py

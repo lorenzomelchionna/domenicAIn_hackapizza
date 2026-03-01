@@ -24,18 +24,50 @@ class GameState:
     prepared_dishes: list[tuple[str, str]] = field(default_factory=list)  # (dish_name, client_id)
     draft_menu: list[dict[str, Any]] = field(default_factory=list)
     is_open: bool = True
+    # Analyst output: suggested bid per unit for each ingredient. [(ingredient, price), ...]
+    # Populated by the analyst (pre-bid → closed_bid). Broker uses these for bidding.
+    suggested_bids: list[tuple[str, float]] = field(default_factory=list)
+    # Broker output: actual auction results. [{ingredient, price, success}, ...]
+    # Populated by the broker after closed_bid. Price = actual paid per unit; success = whether purchase went through.
+    actual_bids: list[dict[str, Any]] = field(default_factory=list)
+    # Target archetype from blog (Esploratore_Galattico, Astrobarone, Saggi_del_Cosmo, Famiglie_Orbitali).
+    # Set by blog agent in speaking phase. None = use default (Astrobarone).
+    # DEPRECATED: kept for backward compat; prefer blog_insight.
+    target_archetype: str | None = None
+    # Free-form strategic insight from the blog agent (e.g. "customers want fast cheap food").
+    # Set by blog insight agent in speaking phase. None = no insight available.
+    blog_insight: str | None = None
+    # Draft selection mode: "blog_insight" (Case A) or "top_sold" (Case B).
+    draft_selection_mode: str = "blog_insight"
 
     def summary(self) -> str:
         """Produce a concise context string for agents."""
+        insight = self.blog_insight or "No blog insight available."
         parts = [
             f"Phase: {self.phase}",
             f"Turn: {self.turn_id}",
+            f"Draft selection mode: {self.draft_selection_mode}",
+            f"Blog insight: {insight}",
             f"Balance: {self.balance}",
             f"Reputation: {self.reputation}",
             f"Inventory: {self.inventory}",
             f"Menu: {self.menu}",
             f"Draft menu: {self.draft_menu}",
-            f"Recipes: {self.recipes[:10]}",
+            #f"Recipes: {self.recipes}",
+            f"Suggested bids (ingredient -> price/unit): {dict(self.suggested_bids) if self.suggested_bids else 'none'}",
+            f"Actual bids (auction results): {self.actual_bids if self.actual_bids else 'none'}",
+            f"Pending clients: {self.pending_clients}",
+            f"Prepared dishes: {self.prepared_dishes}",
+        ]
+        return "\n".join(parts)
+
+    def maitre_summary(self) -> str:
+        """Produce a concise context string for agents."""
+        insight = self.blog_insight or "No blog insight available."
+        parts = [
+            f"Phase: {self.phase}",
+            f"Turn: {self.turn_id}",
+            f"Menu: {self.menu}",
             f"Pending clients: {self.pending_clients}",
             f"Prepared dishes: {self.prepared_dishes}",
         ]

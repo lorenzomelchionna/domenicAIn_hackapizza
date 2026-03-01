@@ -5,13 +5,17 @@ from typing import Any
 
 from datapizza.clients.openai_like import OpenAILikeClient
 
-from src.config import BASE_URL, REGOLO_API_KEY, REGOLO_BASE_URL, REGOLO_MODEL, TEAM_API_KEY, TEAM_ID, validate_config
+from src.blog_archetype import get_latest_post_slug
+from src.blog_sentiment import run_blog_insight_agent
+from src.config import BASE_URL, DB_PATH, REGOLO_API_KEY, REGOLO_BASE_URL, REGOLO_MODEL, TEAM_API_KEY, TEAM_ID, validate_config
 from src.logging_config import setup_loggers
 from src.monitor_state import write_monitor_state
+from src.monitoring import tracer
 from src.state import GameState, StateUpdater
 from src.sse import listen, log
 from src.tools import MCPClient
 from src.agents import create_all_agents
+from src.data_collector import DataCollector, blog_post_exists, record_blog_post
 
 
 async def main() -> None:
@@ -20,6 +24,7 @@ async def main() -> None:
 
     state = GameState(restaurant_id=TEAM_ID)
     state_updater = StateUpdater(BASE_URL, TEAM_API_KEY, TEAM_ID)
+    data_collector = DataCollector(BASE_URL, TEAM_API_KEY, DB_PATH, TEAM_ID)
 
     def phase_getter() -> str:
         return state.phase
@@ -35,7 +40,7 @@ async def main() -> None:
     def state_getter():
         return state
 
-    restaurant_manager, sub_agents = create_all_agents(client, mcp_client, phase_getter, state_getter)
+    restaurant_manager, sub_agents = create_all_agents(client, mcp_client, phase_getter, state_getter, db_path=DB_PATH)
     maitre_agent = next(a for a in sub_agents if a.name == "maitre")
 
     event_queue: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue()
@@ -70,11 +75,46 @@ async def main() -> None:
         # 2. Refresh state for the new turn
         state_updater.refresh_restaurant(state)
         state_updater.refresh_restaurants(state)
-        # 3. Run orchestrator for speaking/pre-bid
+        # 3. Collect initial data for the turn
+        try:
+            data_collector.collect_restaurants(state.turn_id)
+            data_collector.collect_own_restaurant(state.turn_id)
+            log("DATA", f"collected initial data for turn {state.turn_id}")
+        except Exception as e:
+            log("ERROR", f"data collection failed: {e}")
+        # 4. Determine draft selection mode: Case A (first turn or new news) vs Case B (top sold)
+        current_slug = get_latest_post_slug()
+        is_first_turn = state.turn_id <= 1
+        has_db = bool(DB_PATH)
+        is_new_news = False
+        if has_db and current_slug:
+            is_new_news = not blog_post_exists(DB_PATH, current_slug)
+        if is_first_turn or is_new_news or not has_db:
+            state.draft_selection_mode = "blog_insight"
+            if has_db and current_slug and is_new_news:
+                record_blog_post(DB_PATH, current_slug, state.turn_id)
+            try:
+                insight = run_blog_insight_agent(post_index=0)
+                state.blog_insight = insight or None
+                log("BLOG", f"draft=blog_insight, insight: {(state.blog_insight or '')[:80]}")
+            except Exception as e:
+                log("ERROR", f"blog insight agent failed: {e}")
+                state.blog_insight = None
+        else:
+            state.draft_selection_mode = "top_sold"
+            state.blog_insight = None
+            log("BLOG", "draft=top_sold (10 most sold from previous turn)")
+        # 5. Run orchestrator for speaking/pre-bid
         ctx = state.summary()
         msg = f"Current phase: speaking. Execute phase-specific tasks.\n\nContext:\n{ctx}"
         try:
-            resp = restaurant_manager.run(msg)
+            if tracer is not None:
+                with tracer.start_as_current_span("hackapizza.turn_start") as span:
+                    span.set_attribute("turn_id", state.turn_id)
+                    span.set_attribute("phase", "speaking")
+                    resp = restaurant_manager.run(msg)
+            else:
+                resp = restaurant_manager.run(msg)
             log("AGENT", f"orchestrator response (speaking): {resp.text[:200] if resp and resp.text else 'ok'}")
             append_event("AGENT", "orchestrator phase=speaking", {"response_preview": (resp.text[:150] if resp and resp.text else "ok")})
         except Exception as e:
@@ -86,10 +126,33 @@ async def main() -> None:
         state_updater.refresh_restaurant(state)
         if phase in ("waiting", "closed_bid"):
             state_updater.refresh_meals(state)
+        
+        # Collect phase-specific data
+        try:
+            if phase == "waiting":
+                data_collector.collect_bid_history(state.turn_id)
+                data_collector.collect_meals(state.turn_id, TEAM_ID)
+                log("DATA", f"collected bid_history and meals for turn {state.turn_id}")
+            elif phase == "serving":
+                data_collector.collect_market_entries(state.turn_id)
+                data_collector.collect_restaurants(state.turn_id)
+                log("DATA", f"collected market_entries and restaurant menus for turn {state.turn_id}")
+            elif phase == "stopped":
+                data_collector.collect_all_for_turn(state.turn_id)
+                log("DATA", f"collected all end-of-turn data for turn {state.turn_id}")
+        except Exception as e:
+            log("ERROR", f"data collection failed for phase {phase}: {e}")
+        
         ctx = state.summary()
         msg = f"Current phase: {phase}. Execute phase-specific tasks.\n\nContext:\n{ctx}"
         try:
-            resp = restaurant_manager.run(msg)
+            if tracer is not None:
+                with tracer.start_as_current_span("hackapizza.phase") as span:
+                    span.set_attribute("phase", phase)
+                    span.set_attribute("turn_id", state.turn_id)
+                    resp = restaurant_manager.run(msg)
+            else:
+                resp = restaurant_manager.run(msg)
             log("AGENT", f"orchestrator response: {resp.text[:200] if resp and resp.text else 'ok'}")
             append_event("AGENT", f"orchestrator phase={phase}", {"response_preview": (resp.text[:150] if resp and resp.text else "ok")})
         except Exception as e:
@@ -112,7 +175,13 @@ async def main() -> None:
             f"Match the order to a menu item. Check intolerances. If valid, call prepare_dish."
         )
         try:
-            maitre_agent.run(msg)
+            if tracer is not None:
+                with tracer.start_as_current_span("hackapizza.maitre.client_arrival") as span:
+                    span.set_attribute("client_name", client_name)
+                    span.set_attribute("order_preview", str(order_text)[:200])
+                    maitre_agent.run(msg)
+            else:
+                maitre_agent.run(msg)
         except Exception as e:
             log("ERROR", f"maitre (client) failed: {e}")
 
@@ -120,20 +189,31 @@ async def main() -> None:
         dish = data.get("dish", "")
         state_updater.refresh_meals(state)
         state_updater.sync_pending_clients(state)
-        ctx = state.summary()
+        ctx = state.maitre_summary()
         msg = (
             f"Dish ready: {dish}.\n\n"
             f"Context:\n{ctx}\n\n"
             f"Find the client_id from the Pending clients list and call serve_dish(dish_name, client_id)."
         )
         try:
-            maitre_agent.run(msg)
+            if tracer is not None:
+                with tracer.start_as_current_span("hackapizza.maitre.serve_dish") as span:
+                    span.set_attribute("dish", dish)
+                    maitre_agent.run(msg)
+            else:
+                maitre_agent.run(msg)
         except Exception as e:
             log("ERROR", f"maitre (serve) failed: {e}")
 
     async def process_events() -> None:
         while True:
             event_type, event_data = await event_queue.get()
+            # Log all SSE events to database
+            try:
+                data_collector.log_sse_event(state.turn_id if state.turn_id > 0 else None, event_type, event_data)
+            except Exception as e:
+                log("ERROR", f"failed to log SSE event: {e}")
+            
             if event_type == "game_started":
                 state.turn_id = event_data.get("turn_id", 0)
                 state.phase = "speaking"
@@ -149,6 +229,9 @@ async def main() -> None:
                 append_event("EVENT", f"phase -> {phase}", {"phase": phase})
                 if phase not in ("stopped", "speaking"):
                     # speaking is handled in game_started above
+                    await asyncio.get_event_loop().run_in_executor(None, run_orchestrator_for_phase, phase)
+                elif phase == "stopped":
+                    # Collect final data when turn ends
                     await asyncio.get_event_loop().run_in_executor(None, run_orchestrator_for_phase, phase)
             elif event_type == "client_spawned":
                 log("EVENT", f"client={event_data.get('clientName')} order={event_data.get('orderText')}")
