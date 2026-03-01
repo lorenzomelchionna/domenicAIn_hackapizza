@@ -45,7 +45,13 @@ def create_all_agents(client, mcp_client, phase_getter, state_getter=None, db_pa
     menu_decider_pre_bid = create_menu_decider_pre_bid(client, prebid_tools)
     menu_decider_post_bid = create_menu_decider_post_bid(
         client,
-        [tools_by_name["save_menu"], tools_by_name["get_recipes"], tools_by_name["get_inventory"], tools_by_name["get_draft_menu"]],
+        [
+            tools_by_name["save_menu"],
+            tools_by_name["get_recipes"],
+            tools_by_name["get_inventory"],
+            tools_by_name["get_draft_menu"],
+            tools_by_name["calculate_suggested_prices"],
+        ],
     )
     auction_broker = create_auction_broker(client, [
         tools_by_name["closed_bid"],
