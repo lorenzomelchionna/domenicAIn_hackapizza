@@ -65,78 +65,13 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         return client.call("send_message", {"recipient_id": recipient_id, "text": text})
 
     @tool
-    def get_recipes(prep_time_min: int, prep_time_max:int, prestige_min: int, prestige_max: int) -> str:
-        """Get all available recipes. Returns a JSON list of recipes with name, ingredients, prep_time, and prestige.
-        ALWAYS call this tool first to know which dishes you can add to the menu."""
-        if state_getter is None:
-            return json.dumps({"error": "state_getter not configured"})
-        
-        state = state_getter()
-
-        filtered_recipes = []
-        for recipe in state.recipes:
-            if (prep_time_min <= recipe["preparationTimeMs"] <= prep_time_max and
-                prestige_min <= recipe["prestige"] <= prestige_max):
-                
-                filtered_recipes.append(recipe)
-                
-                if len(filtered_recipes) == 40:
-                    break
-
-        return json.dumps(filtered_recipes, ensure_ascii=False)
-
-    @tool
-    def get_fast_recipes(max_prep_time: int = 4500, limit: int = 30) -> str:
-        """Get recipes with short preparation time (for 'ricette_veloci' sentiment).
-        Returns JSON list sorted by preparationTimeMs ascending."""
+    def get_recipes() -> str:
+        """Get ALL available recipes. Returns a JSON list of recipes with name, ingredients,
+        preparationTimeMs, and prestige. Use this to browse the full catalogue."""
         if state_getter is None:
             return json.dumps({"error": "state_getter not configured"})
         state = state_getter()
-        filtered = [r for r in state.recipes if r["preparationTimeMs"] <= max_prep_time]
-        filtered.sort(key=lambda r: r["preparationTimeMs"])
-        return json.dumps(filtered[:limit], ensure_ascii=False)
-
-    @tool
-    def get_prestigious_recipes(min_prestige: int = 60, limit: int = 30) -> str:
-        """Get high-prestige recipes (for 'ricette_prestigiose' sentiment).
-        Returns JSON list sorted by prestige descending."""
-        if state_getter is None:
-            return json.dumps({"error": "state_getter not configured"})
-        state = state_getter()
-        filtered = [r for r in state.recipes if r["prestige"] >= min_prestige]
-        filtered.sort(key=lambda r: r["prestige"], reverse=True)
-        return json.dumps(filtered[:limit], ensure_ascii=False)
-
-    @tool
-    def get_budget_recipes(max_ingredients: int = 4, limit: int = 30) -> str:
-        """Get recipes with few ingredients (for 'ricette_economiche' sentiment).
-        Returns JSON list sorted by ingredient count ascending."""
-        if state_getter is None:
-            return json.dumps({"error": "state_getter not configured"})
-        state = state_getter()
-        filtered = [r for r in state.recipes if len(r.get("ingredients", {})) <= max_ingredients]
-        filtered.sort(key=lambda r: len(r.get("ingredients", {})))
-        return json.dumps(filtered[:limit], ensure_ascii=False)
-
-    @tool
-    def get_balanced_recipes(
-        prep_time_min: int = 4800,
-        prep_time_max: int = 8500,
-        prestige_min: int = 38,
-        prestige_max: int = 72,
-        limit: int = 30,
-    ) -> str:
-        """Get recipes with balanced prep time and prestige (for 'equilibrio' sentiment).
-        Returns JSON list filtered by the given ranges."""
-        if state_getter is None:
-            return json.dumps({"error": "state_getter not configured"})
-        state = state_getter()
-        filtered = [
-            r for r in state.recipes
-            if (prep_time_min <= r["preparationTimeMs"] <= prep_time_max
-                and prestige_min <= r["prestige"] <= prestige_max)
-        ]
-        return json.dumps(filtered[:limit], ensure_ascii=False)
+        return json.dumps(state.recipes, ensure_ascii=False)
 
     @tool
     def get_inventory() -> str:
@@ -301,10 +236,6 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         get_pending_clients,
         send_message,
         get_recipes,
-        get_fast_recipes,
-        get_prestigious_recipes,
-        get_budget_recipes,
-        get_balanced_recipes,
         get_inventory,
         save_draft_menu,
         get_draft_menu,
