@@ -35,6 +35,8 @@ def _state_to_dict(state: "GameState") -> dict[str, Any]:
         "actual_bids": state.actual_bids,
         "target_archetype": state.target_archetype,
         "blog_insight": state.blog_insight,
+        "last_blog_post_slug": state.last_blog_post_slug,
+        "draft_selection_mode": state.draft_selection_mode,
     }
 
 

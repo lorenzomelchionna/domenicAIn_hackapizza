@@ -24,11 +24,17 @@ def create_all_agents(client, mcp_client, phase_getter, state_getter=None, db_pa
 
     _, tools_by_name = create_game_tools(mcp_client, state_getter)
 
+    analyst_tools_list: list = []
+    analyst_tools_by_name: dict = {}
+    if db_path:
+        analyst_tools_list, analyst_tools_by_name = create_analyst_tools(db_path, state_getter)
+
+    prebid_tools = [tools_by_name["get_recipes"], tools_by_name["save_draft_menu"]]
+    if "get_dish_popularity_stats" in analyst_tools_by_name:
+        prebid_tools.insert(1, analyst_tools_by_name["get_dish_popularity_stats"])
+
     diplomatico = create_diplomatico(client, [tools_by_name["send_message"]])
-    menu_decider_pre_bid = create_menu_decider_pre_bid(
-        client,
-        [tools_by_name["get_recipes"], tools_by_name["save_draft_menu"]],
-    )
+    menu_decider_pre_bid = create_menu_decider_pre_bid(client, prebid_tools)
     menu_decider_post_bid = create_menu_decider_post_bid(
         client,
         [
