@@ -22,6 +22,7 @@ class GameState:
     market_entries: list[dict[str, Any]] = field(default_factory=list)
     pending_clients: list[dict[str, Any]] = field(default_factory=list)
     prepared_dishes: list[tuple[str, str]] = field(default_factory=list)  # (dish_name, client_id)
+    dishes_in_preparation: dict[str, str] = field(default_factory=dict)  # {dish_name: client_id}
     draft_menu: list[dict[str, Any]] = field(default_factory=list)
     is_open: bool = True
     # Analyst output: suggested bid per unit for each ingredient. [(ingredient, price), ...]
@@ -124,12 +125,18 @@ class StateUpdater:
         for m in state.meals:
             if m.get("executed"):
                 continue
-            cid = str(m.get("customerId"))
+            cid = str(m.get("customerId") or m.get("customer_id", ""))
+            customer = m.get("customer", {})
+            client_name = (
+                customer.get("name", "") if isinstance(customer, dict)
+                else m.get("clientName") or m.get("client_name", "")
+            )
+            order_text = m.get("request") or m.get("orderText") or m.get("order_text", "")
             pending.append(
                 {
                     "client_id": cid,
-                    "clientName": m.get("clientName", ""),
-                    "orderText": m.get("orderText", ""),
+                    "clientName": client_name,
+                    "orderText": order_text,
                 }
             )
         state.pending_clients = pending
