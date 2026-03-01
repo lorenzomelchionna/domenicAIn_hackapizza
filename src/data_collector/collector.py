@@ -72,11 +72,9 @@ class DataCollector:
             conn.close()
         return inserted
 
-    def collect_meals(self, turn_id: int, restaurant_id: int | None = None) -> int:
-        """Collect meals for a turn. If restaurant_id is None, collects for all restaurants."""
-        params: dict[str, Any] = {"turn_id": turn_id}
-        if restaurant_id is not None:
-            params["restaurant_id"] = restaurant_id
+    def collect_meals(self, turn_id: int, restaurant_id: int) -> int:
+        """Collect meals for a turn and specific restaurant."""
+        params: dict[str, Any] = {"turn_id": turn_id, "restaurant_id": restaurant_id}
 
         data = self._get("/meals", params)
         if not data or not isinstance(data, list):
@@ -87,8 +85,7 @@ class DataCollector:
         try:
             cursor = conn.cursor()
             for meal in data:
-                rid = meal.get("restaurantId") or meal.get("restaurant_id") or restaurant_id or 0
-                # Extract customer name from nested object
+                rid = meal.get("restaurantId") or meal.get("restaurant_id") or restaurant_id
                 customer = meal.get("customer", {})
                 client_name = (
                     customer.get("name", "") if isinstance(customer, dict)

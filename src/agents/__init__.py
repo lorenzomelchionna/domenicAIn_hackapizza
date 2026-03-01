@@ -66,12 +66,13 @@ def create_all_agents(client, mcp_client, phase_getter, state_getter=None, db_pa
 
     analyst = None
     if db_path:
-        analyst_tools_list, _ = create_analyst_tools(db_path, state_getter)
+        _, analyst_tools_by_name = create_analyst_tools(db_path, state_getter)
         analyst = create_analyst(
             client,
-            analyst_tools_list + [
-                tools_by_name["save_suggested_bids"],
+            [
                 tools_by_name["get_draft_menu"],
+                analyst_tools_by_name["get_winning_bid_statistics"],
+                tools_by_name["save_suggested_bids"],
             ],
         )
 
