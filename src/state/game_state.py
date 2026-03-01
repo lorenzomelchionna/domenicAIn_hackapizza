@@ -32,16 +32,22 @@ class GameState:
     actual_bids: list[dict[str, Any]] = field(default_factory=list)
     # Target archetype from blog (Esploratore_Galattico, Astrobarone, Saggi_del_Cosmo, Famiglie_Orbitali).
     # Set by blog agent in speaking phase. None = use default (Astrobarone).
+    # DEPRECATED: kept for backward compat; prefer blog_sentiment.
     target_archetype: str | None = None
+    # Blog sentiment from sentiment agent (ricette_veloci, ricette_prestigiose, etc.).
+    # Set by sentiment agent in speaking phase. None = use "default".
+    blog_sentiment: str | None = None
 
     def summary(self) -> str:
         """Produce a concise context string for agents."""
         from src.config import DEFAULT_ARCHETYPE
 
         archetype = self.target_archetype or DEFAULT_ARCHETYPE
+        sentiment = self.blog_sentiment or "default"
         parts = [
             f"Phase: {self.phase}",
             f"Turn: {self.turn_id}",
+            f"Blog sentiment: {sentiment}",
             f"Target archetype: {archetype}",
             f"Balance: {self.balance}",
             f"Reputation: {self.reputation}",

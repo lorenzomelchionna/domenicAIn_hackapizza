@@ -152,6 +152,27 @@ def create_analyst_tools(db_path: str | Path, state_getter: Callable | None = No
         except Exception as e:
             return json.dumps({"error": str(e)})
 
+    @tool
+    def get_least_sold_recipes(limit: int = 30) -> str:
+        """Get recipes that were least ordered in recent turns (for 'ricette_poco_vendute' sentiment).
+        Exploits niche dishes that competitors might ignore. Returns JSON list sorted by
+        order_count ascending (least sold first). Falls back to all recipes if no historical data."""
+        if state_getter is None:
+            return json.dumps({"error": "state_getter not configured"})
+        state = state_getter()
+        try:
+            popularity = queries.get_dish_popularity(db_path)
+        except Exception:
+            popularity = []
+
+        if not popularity:
+            return json.dumps(state.recipes[:limit], ensure_ascii=False)
+
+        sold_counts = {row["dish_name"]: row["order_count"] for row in popularity}
+        recipe_list = list(state.recipes)
+        recipe_list.sort(key=lambda r: sold_counts.get(r["name"], 0))
+        return json.dumps(recipe_list[:limit], ensure_ascii=False)
+
     all_tools = [
         get_bid_statistics,
         get_winning_bid_statistics,
@@ -162,6 +183,7 @@ def create_analyst_tools(db_path: str | Path, state_getter: Callable | None = No
         get_recommended_price,
         get_available_turns,
         get_turn_data_summary,
+        get_least_sold_recipes,
     ]
     by_name = {t.__name__: t for t in all_tools}
     return all_tools, by_name
