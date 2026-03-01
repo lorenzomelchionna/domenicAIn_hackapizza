@@ -43,6 +43,8 @@ async def main() -> None:
     restaurant_manager, sub_agents = create_all_agents(client, mcp_client, phase_getter, state_getter, db_path=DB_PATH)
     maitre_agent = next(a for a in sub_agents if a.name == "maitre")
     auction_broker_agent = next((a for a in sub_agents if a.name == "auction_broker"), None)
+    menu_decider_pre_bid_agent = next((a for a in sub_agents if a.name == "menu_decider_pre_bid"), None)
+    analyst_agent = next((a for a in sub_agents if a.name == "analyst"), None)
 
     event_queue: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue()
     event_log: list[dict[str, Any]] = []
@@ -145,6 +147,65 @@ async def main() -> None:
             log("ERROR", f"data collection failed for phase {phase}: {e}")
         
         if phase == "closed_bid" and auction_broker_agent is not None:
+            # Ensure draft_menu and suggested_bids are populated before auction_broker
+            if not state.draft_menu and menu_decider_pre_bid_agent is not None:
+                ctx = state.summary()
+                msg = f"Current phase: speaking (pre-bid). Create the draft menu now.\n\nContext:\n{ctx}"
+                try:
+                    if tracer is not None:
+                        with tracer.start_as_current_span("hackapizza.ensure_draft_menu") as span:
+                            span.set_attribute("phase", phase)
+                            menu_decider_pre_bid_agent.run(msg, tool_choice="required")
+                    else:
+                        menu_decider_pre_bid_agent.run(msg, tool_choice="required")
+                    log("AGENT", "menu_decider_pre_bid (ensure draft_menu)")
+                except Exception as e:
+                    log("ERROR", f"menu_decider_pre_bid (ensure draft_menu) failed: {e}")
+            # Fallback: if draft_menu still empty, build from first 5 recipes
+            if not state.draft_menu and state.recipes:
+                fallback_draft = []
+                for r in state.recipes[:5]:
+                    name = r.get("name")
+                    if not name:
+                        continue
+                    ings = r.get("ingredients")
+                    if isinstance(ings, dict):
+                        ing_list = [{"name": k, "quantity": int(v)} for k, v in ings.items()]
+                    elif isinstance(ings, list):
+                        ing_list = [{"name": it.get("name", ""), "quantity": int(it.get("quantity", 0))} for it in ings if it.get("name")]
+                    else:
+                        ing_list = []
+                    fallback_draft.append({"name": name, "ingredients": ing_list})
+                if fallback_draft:
+                    state.draft_menu = fallback_draft
+                    log("AGENT", f"fallback draft_menu from recipes: {[d['name'] for d in fallback_draft]}")
+            if not state.suggested_bids and analyst_agent is not None:
+                ctx = state.summary()
+                msg = f"Current phase: speaking (pre-bid). Analyze ingredients and save suggested bids.\n\nContext:\n{ctx}"
+                try:
+                    if tracer is not None:
+                        with tracer.start_as_current_span("hackapizza.ensure_suggested_bids") as span:
+                            span.set_attribute("phase", phase)
+                            analyst_agent.run(msg, tool_choice="required")
+                    else:
+                        analyst_agent.run(msg, tool_choice="required")
+                    log("AGENT", "analyst (ensure suggested_bids)")
+                except Exception as e:
+                    log("ERROR", f"analyst (ensure suggested_bids) failed: {e}")
+            # Fallback: if suggested_bids still empty, compute defaults from draft_menu (price=10)
+            if not state.suggested_bids and state.draft_menu:
+                ingredients: set[str] = set()
+                for item in state.draft_menu:
+                    ings = item.get("ingredients")
+                    if isinstance(ings, list):
+                        for it in ings:
+                            if isinstance(it, dict) and it.get("name"):
+                                ingredients.add(str(it["name"]))
+                    elif isinstance(ings, dict):
+                        ingredients.update(ings.keys())
+                state.suggested_bids = [(ing, 10.0) for ing in sorted(ingredients)]
+                log("AGENT", f"fallback suggested_bids from draft_menu: {len(state.suggested_bids)} ingredients")
+
             ctx = state.auction_summary()
             msg = f"Current phase: closed_bid. Submit auction bids now.\n\nContext:\n{ctx}"
             try:
