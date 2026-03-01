@@ -167,12 +167,26 @@ async def main() -> None:
         client_name = data.get("clientName", "")
         order_text = data.get("orderText", "")
         intolerances = data.get("intolerances", [])
+        
+        # Find client_id from meals by matching customer.name and request
+        client_id = None
+        for meal in state.meals:
+            if meal.get("executed"):
+                continue
+            customer = meal.get("customer", {})
+            meal_client_name = customer.get("name", "") if isinstance(customer, dict) else ""
+            meal_order_text = meal.get("request", "")
+            if meal_client_name == client_name and meal_order_text == order_text:
+                client_id = str(meal.get("customerId"))
+                break
+        
         msg = (
             f"A new client arrived: {client_name}.\n"
+            f"Client ID: {client_id}\n"
             f"Order: {order_text}\n"
             f"Intolerances: {intolerances}\n\n"
             f"Context:\n{ctx}\n\n"
-            f"Match the order to a menu item. Check intolerances. If valid, call prepare_dish."
+            f"Match the order to a menu item. Check intolerances. If valid, call prepare_dish(dish_name, client_id)."
         )
         try:
             if tracer is not None:
@@ -189,16 +203,22 @@ async def main() -> None:
         dish = data.get("dish", "")
         state_updater.refresh_meals(state)
         state_updater.sync_pending_clients(state)
+        
+        # Get client_id from dishes_in_preparation mapping
+        client_id = state.dishes_in_preparation.get(dish)
+        
         ctx = state.maitre_summary()
         msg = (
-            f"Dish ready: {dish}.\n\n"
+            f"Dish ready: {dish}.\n"
+            f"Client ID for this dish: {client_id}\n\n"
             f"Context:\n{ctx}\n\n"
-            f"Find the client_id from the Pending clients list and call serve_dish(dish_name, client_id)."
+            f"Call serve_dish(dish_name='{dish}', client_id='{client_id}') to serve the dish."
         )
         try:
             if tracer is not None:
                 with tracer.start_as_current_span("hackapizza.maitre.serve_dish") as span:
                     span.set_attribute("dish", dish)
+                    span.set_attribute("client_id", client_id or "unknown")
                     maitre_agent.run(msg)
             else:
                 maitre_agent.run(msg)

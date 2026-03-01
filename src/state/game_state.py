@@ -22,6 +22,7 @@ class GameState:
     market_entries: list[dict[str, Any]] = field(default_factory=list)
     pending_clients: list[dict[str, Any]] = field(default_factory=list)
     prepared_dishes: list[tuple[str, str]] = field(default_factory=list)  # (dish_name, client_id)
+    dishes_in_preparation: dict[str, str] = field(default_factory=dict)  # {dish_name: client_id}
     draft_menu: list[dict[str, Any]] = field(default_factory=list)
     is_open: bool = True
     # Analyst output: suggested bid per unit for each ingredient. [(ingredient, price), ...]

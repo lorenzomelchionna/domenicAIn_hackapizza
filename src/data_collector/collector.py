@@ -113,25 +113,6 @@ class DataCollector:
             conn.close()
         return inserted
 
-    def collect_all_meals(self, turn_id: int) -> int:
-        """Collect meals for a turn from ALL restaurants. Returns total records inserted."""
-        restaurants_data = self._get("/restaurants")
-        if not restaurants_data or not isinstance(restaurants_data, list):
-            return 0
-        
-        total_inserted = 0
-        for restaurant in restaurants_data:
-            rid = restaurant.get("id") or restaurant.get("restaurant_id") or restaurant.get("restaurantId")
-            if rid:
-                try:
-                    rid_int = int(rid)
-                    inserted = self.collect_meals(turn_id, rid_int)
-                    total_inserted += inserted
-                except (ValueError, TypeError):
-                    continue
-        
-        return total_inserted
-
     def collect_market_entries(self, turn_id: int) -> int:
         """Collect current market entries. Returns number of records inserted."""
         data = self._get("/market/entries")
@@ -266,22 +247,11 @@ class DataCollector:
         finally:
             conn.close()
 
-    def collect_all_for_turn(self, turn_id: int, all_meals: bool = True) -> dict[str, int]:
-        """Collect all available data for a turn. Returns counts of inserted records.
-        
-        Args:
-            turn_id: The turn to collect data for
-            all_meals: If True, collect meals from ALL restaurants (for market analysis).
-                       If False, collect only our restaurant's meals.
-        """
-        if all_meals:
-            meals_count = self.collect_all_meals(turn_id)
-        else:
-            meals_count = self.collect_meals(turn_id, self.restaurant_id)
-        
+    def collect_all_for_turn(self, turn_id: int) -> dict[str, int]:
+        """Collect all available data for a turn. Returns counts of inserted records."""
         return {
             "bid_history": self.collect_bid_history(turn_id),
-            "meals": meals_count,
+            "meals": self.collect_meals(turn_id, self.restaurant_id),
             "market_entries": self.collect_market_entries(turn_id),
             "restaurants": self.collect_restaurants(turn_id),
             "own_restaurant": self.collect_own_restaurant(turn_id),
