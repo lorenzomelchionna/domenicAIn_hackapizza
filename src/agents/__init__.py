@@ -72,6 +72,7 @@ def create_all_agents(client, mcp_client, phase_getter, state_getter=None, db_pa
             analyst_tools_list + [
                 tools_by_name["save_suggested_bids"],
                 tools_by_name["get_draft_menu"],
+                tools_by_name["get_recipes"]
             ],
         )
 
