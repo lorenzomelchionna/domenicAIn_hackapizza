@@ -152,9 +152,9 @@ async def main() -> None:
                     with tracer.start_as_current_span("hackapizza.phase.closed_bid") as span:
                         span.set_attribute("phase", phase)
                         span.set_attribute("turn_id", state.turn_id)
-                        resp = auction_broker_agent.run(msg)
+                        resp = auction_broker_agent.run(msg, tool_choice="required")
                 else:
-                    resp = auction_broker_agent.run(msg)
+                    resp = auction_broker_agent.run(msg, tool_choice="required")
                 log("AGENT", f"auction_broker response: {resp.text[:200] if resp and resp.text else 'ok'}")
                 append_event("AGENT", "auction_broker phase=closed_bid", {"response_preview": (resp.text[:150] if resp and resp.text else "ok")})
             except Exception as e:
@@ -212,9 +212,9 @@ async def main() -> None:
                 with tracer.start_as_current_span("hackapizza.maitre.client_arrival") as span:
                     span.set_attribute("client_name", client_name)
                     span.set_attribute("order_preview", str(order_text)[:200])
-                    maitre_agent.run(msg)
+                    maitre_agent.run(msg, tool_choice="required")
             else:
-                maitre_agent.run(msg)
+                maitre_agent.run(msg, tool_choice="required")
         except Exception as e:
             log("ERROR", f"maitre (client) failed: {e}")
 
@@ -238,9 +238,9 @@ async def main() -> None:
                 with tracer.start_as_current_span("hackapizza.maitre.serve_dish") as span:
                     span.set_attribute("dish", dish)
                     span.set_attribute("client_id", client_id or "unknown")
-                    maitre_agent.run(msg)
+                    maitre_agent.run(msg, tool_choice="required")
             else:
-                maitre_agent.run(msg)
+                maitre_agent.run(msg, tool_choice="required")
         except Exception as e:
             log("ERROR", f"maitre (serve) failed: {e}")
 
