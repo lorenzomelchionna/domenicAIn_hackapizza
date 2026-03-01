@@ -15,7 +15,7 @@ Phase routing:
 
 ## Delegation format (IMPORTANT):
 - When calling a sub-agent, pass ONE plain-text instruction/message only.
-- Embed the full relevant context directly in that message body.
+- Embed the full relevant context directly in that message body (the orchestrator provides a "Context:" block with Phase, Turn, Draft menu, Balance, Inventory, etc.).
 - Do NOT pass extra named arguments like Recipes, Inventory, Balance, or other keyword fields.
 
 ## DISABLED agents:
