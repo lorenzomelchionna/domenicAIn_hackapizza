@@ -1,34 +1,21 @@
-"""Blog scraping and sentiment classification for Hackapizza 2.0.
+"""Blog scraping and market insight extraction for Hackapizza 2.0.
 
-Reads the latest Cronache del Cosmo blog post and classifies the market mood
-into a predefined sentiment from the sentiment pool. Used at the start of each
-speaking phase to guide recipe filtering strategy.
+Reads the latest Cronache del Cosmo blog post and produces a free-form
+strategic insight about what kind of recipes to favour this turn.
+Used at the start of each speaking phase to guide recipe selection.
 """
-from typing import Optional
-
 from datapizza.agents import Agent
 from datapizza.tools import tool
 
 from src.blog_archetype import _scrape_post
 from src.config import REGOLO_API_KEY, REGOLO_BASE_URL, REGOLO_MODEL
-from src.data import load_json
-
-SENTIMENT_POOL: dict[str, str] = load_json("sentiments.json")
 
 
-def extract_sentiment(response_text: str) -> Optional[str]:
-    """Parse agent response for a sentiment key. Returns the key or None."""
-    if not response_text:
-        return None
-    text_lower = response_text.lower()
-    for key in SENTIMENT_POOL:
-        if key in text_lower:
-            return key
-    return None
+def run_blog_insight_agent(post_index: int = 0) -> str:
+    """Read the latest blog post and return a strategic insight for menu planning.
 
-
-def run_sentiment_agent(post_index: int = 0) -> tuple[Optional[str], str]:
-    """Run the blog sentiment agent. Returns (sentiment_or_none, full_response_text)."""
+    Returns the agent's free-form analysis as a string.
+    """
     from datapizza.clients.openai_like import OpenAILikeClient
 
     client = OpenAILikeClient(
@@ -41,27 +28,22 @@ def run_sentiment_agent(post_index: int = 0) -> tuple[Optional[str], str]:
     def get_blog_post(**kwargs: object) -> str:
         return _scrape_post(post_index)
 
-    sentiment_descriptions = "\n".join(
-        f"- **{key}**: {desc}" for key, desc in SENTIMENT_POOL.items() if key != "default"
-    )
-
     agent = Agent(
-        name="SentimentAgent",
+        name="BlogInsightAgent",
         client=client,
         system_prompt=(
-            "You read a blog post from Cronache del Cosmo and classify the market mood.\n\n"
-            "Available sentiments:\n"
-            f"{sentiment_descriptions}\n\n"
-            "RULES:\n"
-            "1. Call get_blog_post to read the latest post.\n"
-            "2. Classify the post mood into EXACTLY ONE sentiment from the list above.\n"
-            "3. Reply with ONLY the sentiment key (e.g. ricette_veloci). Nothing else.\n"
-            "4. If unsure, reply with: default"
+            "You are a market analyst for a galactic restaurant.\n"
+            "Read the latest blog post from Cronache del Cosmo and extract a concise "
+            "strategic insight that will guide menu planning.\n\n"
+            "Your output MUST be a short paragraph (3-5 sentences) that answers:\n"
+            "- What kind of customers are expected? (e.g. budget-conscious, premium, families, in a hurry)\n"
+            "- What qualities should the menu emphasise? (e.g. fast prep, high prestige, low cost, variety, niche dishes)\n"
+            "- Any other actionable hint from the post.\n\n"
+            "Be specific and actionable. Do NOT list sentiment labels. "
+            "Write in English. Do NOT include the blog text itself."
         ),
         tools=[get_blog_post],
     )
 
-    resp = agent.run("Read the latest blog post and classify its market sentiment.")
-    text = resp.text if hasattr(resp, "text") else str(resp)
-    sentiment = extract_sentiment(text)
-    return sentiment, text
+    resp = agent.run("Read the latest blog post and produce a strategic menu insight.")
+    return resp.text if hasattr(resp, "text") else str(resp)
