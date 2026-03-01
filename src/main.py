@@ -5,6 +5,7 @@ from typing import Any
 
 from datapizza.clients.openai_like import OpenAILikeClient
 
+from src.blog_archetype import get_latest_post_slug
 from src.blog_sentiment import run_blog_insight_agent
 from src.config import BASE_URL, DB_PATH, REGOLO_API_KEY, REGOLO_BASE_URL, REGOLO_MODEL, TEAM_API_KEY, TEAM_ID, validate_config
 from src.logging_config import setup_loggers
@@ -81,14 +82,26 @@ async def main() -> None:
             log("DATA", f"collected initial data for turn {state.turn_id}")
         except Exception as e:
             log("ERROR", f"data collection failed: {e}")
-        # 4. Run blog insight agent to extract strategic guidance
-        try:
-            insight = run_blog_insight_agent(post_index=0)
-            state.blog_insight = insight or None
-            log("BLOG", f"blog insight: {(state.blog_insight or '')[:120]}")
-        except Exception as e:
-            log("ERROR", f"blog insight agent failed: {e}")
+        # 4. Determine draft selection mode: Case A (first turn or new news) vs Case B (top sold)
+        current_slug = get_latest_post_slug()
+        is_first_turn = state.turn_id <= 1
+        is_new_news = current_slug and current_slug != state.last_blog_post_slug
+        has_db = bool(DB_PATH)
+        if is_first_turn or is_new_news or not has_db:
+            state.draft_selection_mode = "blog_insight"
+            if current_slug:
+                state.last_blog_post_slug = current_slug
+            try:
+                insight = run_blog_insight_agent(post_index=0)
+                state.blog_insight = insight or None
+                log("BLOG", f"draft=blog_insight, insight: {(state.blog_insight or '')[:80]}")
+            except Exception as e:
+                log("ERROR", f"blog insight agent failed: {e}")
+                state.blog_insight = None
+        else:
+            state.draft_selection_mode = "top_sold"
             state.blog_insight = None
+            log("BLOG", "draft=top_sold (10 most sold from previous turn)")
         # 5. Run orchestrator for speaking/pre-bid
         ctx = state.summary()
         msg = f"Current phase: speaking. Execute phase-specific tasks.\n\nContext:\n{ctx}"
