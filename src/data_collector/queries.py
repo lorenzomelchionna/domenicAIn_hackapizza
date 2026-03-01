@@ -46,6 +46,20 @@ def _get_recent_turns(conn, window_size: int = DEFAULT_WINDOW_SIZE) -> list[int]
     return [row["turn_id"] for row in cursor.fetchall()]
 
 
+def _get_recent_turns_with_meals(conn, window_size: int = DEFAULT_WINDOW_SIZE) -> list[int]:
+    """Get the most recent N turn IDs that have meals data."""
+    cursor = conn.execute(
+        """
+        SELECT DISTINCT turn_id FROM meals
+        WHERE dish_name IS NOT NULL AND dish_name != ''
+        ORDER BY turn_id DESC
+        LIMIT ?
+        """,
+        (window_size,),
+    )
+    return [row["turn_id"] for row in cursor.fetchall()]
+
+
 def _get_recent_turns_any(conn, window_size: int = DEFAULT_WINDOW_SIZE) -> list[int]:
     """Get the most recent N turn IDs from any table."""
     cursor = conn.execute(
@@ -204,13 +218,13 @@ def get_ingredient_market_prices(db_path: str | Path, window_size: int = DEFAULT
 
 
 def get_dish_popularity(db_path: str | Path, window_size: int = DEFAULT_WINDOW_SIZE) -> list[dict[str, Any]]:
-    """Get dish popularity based on orders for the last N turns.
+    """Get dish popularity based on orders for the last N turns that have meals data.
     
     Returns list of dicts with: dish_name, order_count, avg_price, executed_count, success_rate
     """
     conn = get_connection(db_path)
     try:
-        recent_turns = _get_recent_turns_any(conn, window_size)
+        recent_turns = _get_recent_turns_with_meals(conn, window_size)
         if not recent_turns:
             return []
         
@@ -231,6 +245,95 @@ def get_dish_popularity(db_path: str | Path, window_size: int = DEFAULT_WINDOW_S
             recent_turns,
         )
         return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_menu_popularity(db_path: str | Path, window_size: int = DEFAULT_WINDOW_SIZE) -> list[dict[str, Any]]:
+    """Get dish popularity based on how many restaurants have each dish on their menu.
+    
+    Analyzes restaurant_snapshots.menu_json to count how often each dish appears
+    across competitor menus. More restaurants offering a dish = higher demand signal.
+    
+    Returns list of dicts with:
+    - dish_name: name of the dish
+    - restaurant_count: how many restaurants have it on menu
+    - avg_price: average price across menus
+    - min_price: lowest price seen
+    - max_price: highest price seen
+    - restaurants: list of restaurant names offering it
+    """
+    import json as _json
+    
+    conn = get_connection(db_path)
+    try:
+        recent_turns = _get_recent_turns_any(conn, window_size)
+        if not recent_turns:
+            return []
+        
+        cursor = conn.execute(
+            """
+            SELECT rs.restaurant_id, rs.name, rs.menu_json, rs.turn_id
+            FROM restaurant_snapshots rs
+            INNER JOIN (
+                SELECT restaurant_id, MAX(turn_id) as max_turn
+                FROM restaurant_snapshots
+                WHERE menu_json IS NOT NULL
+                GROUP BY restaurant_id
+            ) latest ON rs.restaurant_id = latest.restaurant_id AND rs.turn_id = latest.max_turn
+            """
+        )
+        
+        dish_data: dict[str, dict] = {}
+        
+        for row in cursor.fetchall():
+            menu_json = row["menu_json"]
+            restaurant_name = row["name"]
+            
+            if not menu_json:
+                continue
+            
+            try:
+                menu = _json.loads(menu_json)
+                items = menu.get("items", []) if isinstance(menu, dict) else menu
+                
+                for item in items:
+                    if isinstance(item, dict):
+                        dish_name = item.get("name", "")
+                        price = item.get("price", 0)
+                    else:
+                        continue
+                    
+                    if not dish_name:
+                        continue
+                    
+                    if dish_name not in dish_data:
+                        dish_data[dish_name] = {
+                            "dish_name": dish_name,
+                            "prices": [],
+                            "restaurants": [],
+                        }
+                    
+                    dish_data[dish_name]["prices"].append(price)
+                    if restaurant_name not in dish_data[dish_name]["restaurants"]:
+                        dish_data[dish_name]["restaurants"].append(restaurant_name)
+            except (_json.JSONDecodeError, TypeError):
+                continue
+        
+        results = []
+        for dish_name, data in dish_data.items():
+            prices = data["prices"]
+            results.append({
+                "dish_name": dish_name,
+                "restaurant_count": len(data["restaurants"]),
+                "avg_price": round(sum(prices) / len(prices), 2) if prices else 0,
+                "min_price": min(prices) if prices else 0,
+                "max_price": max(prices) if prices else 0,
+                "restaurants": data["restaurants"],
+            })
+        
+        results.sort(key=lambda x: x["restaurant_count"], reverse=True)
+        return results
     finally:
         conn.close()
 
@@ -400,3 +503,227 @@ def get_recent_turns_with_bids(db_path: str | Path, window_size: int = DEFAULT_W
         return _get_recent_turns(conn, window_size)
     finally:
         conn.close()
+
+
+def get_ingredient_competition_analysis(db_path: str | Path, window_size: int = DEFAULT_WINDOW_SIZE) -> list[dict[str, Any]]:
+    """Analyze ingredient competition: how many competitors bid on each ingredient and bid spread.
+    
+    Returns list of dicts with:
+    - ingredient: name
+    - unique_bidders: number of different restaurants that bid on this ingredient
+    - total_bids: total number of bids
+    - avg_bid: average bid amount
+    - min_bid: minimum bid
+    - max_bid: maximum bid
+    - bid_spread: max_bid - min_bid (higher = more competitive/volatile)
+    - competition_score: 0-100 score (higher = more competition, harder to win)
+    """
+    conn = get_connection(db_path)
+    try:
+        recent_turns = _get_recent_turns(conn, window_size)
+        if not recent_turns:
+            return []
+        
+        placeholders = ",".join("?" * len(recent_turns))
+        cursor = conn.execute(
+            f"""
+            SELECT 
+                ingredient,
+                COUNT(DISTINCT restaurant_id) as unique_bidders,
+                COUNT(*) as total_bids,
+                ROUND(AVG(bid_amount), 2) as avg_bid,
+                MIN(bid_amount) as min_bid,
+                MAX(bid_amount) as max_bid,
+                ROUND(MAX(bid_amount) - MIN(bid_amount), 2) as bid_spread,
+                ROUND(SUM(quantity), 0) as total_quantity_demanded
+            FROM bid_history
+            WHERE turn_id IN ({placeholders})
+            GROUP BY ingredient
+            ORDER BY unique_bidders DESC, total_bids DESC
+            """,
+            recent_turns,
+        )
+        results = []
+        for row in cursor.fetchall():
+            d = dict(row)
+            bidders = d["unique_bidders"] or 1
+            spread = d["bid_spread"] or 0
+            avg = d["avg_bid"] or 1
+            spread_ratio = (spread / avg * 100) if avg > 0 else 0
+            d["competition_score"] = round(min(100, (bidders * 15) + (spread_ratio * 0.5)), 1)
+            results.append(d)
+        return results
+    finally:
+        conn.close()
+
+
+def get_dish_profitability_analysis(db_path: str | Path, recipes: list[dict], window_size: int = DEFAULT_WINDOW_SIZE) -> list[dict[str, Any]]:
+    """Analyze dish profitability combining sales price and ingredient costs.
+    
+    Args:
+        db_path: path to database
+        recipes: list of recipe dicts with {name, ingredients: [{name, quantity}], prestige}
+        window_size: number of recent turns to analyze
+    
+    Returns list of dicts with:
+    - dish_name: recipe name
+    - avg_selling_price: historical average selling price (from meals)
+    - estimated_ingredient_cost: sum of avg winning bids for ingredients
+    - estimated_margin: selling_price - ingredient_cost
+    - margin_percent: margin as percentage of cost
+    - order_count: how many times this dish was ordered
+    - prestige: dish prestige value
+    - ingredient_competition_avg: average competition score of ingredients
+    - profitability_score: 0-100 composite score (higher = better to put on menu)
+    """
+    conn = get_connection(db_path)
+    try:
+        recent_turns = _get_recent_turns(conn, window_size)
+        recent_turns_any = _get_recent_turns_any(conn, window_size)
+        
+        ingredient_prices: dict[str, float] = {}
+        ingredient_competition: dict[str, float] = {}
+        
+        if recent_turns:
+            placeholders = ",".join("?" * len(recent_turns))
+            cursor = conn.execute(
+                f"""
+                SELECT 
+                    ingredient,
+                    ROUND(AVG(bid_amount), 2) as avg_bid,
+                    COUNT(DISTINCT restaurant_id) as unique_bidders
+                FROM bid_history
+                WHERE turn_id IN ({placeholders})
+                GROUP BY ingredient
+                """,
+                recent_turns,
+            )
+            for row in cursor.fetchall():
+                ingredient_prices[row["ingredient"]] = row["avg_bid"]
+                bidders = row["unique_bidders"] or 1
+                ingredient_competition[row["ingredient"]] = min(100, bidders * 20)
+        
+        dish_sales: dict[str, dict] = {}
+        if recent_turns_any:
+            placeholders = ",".join("?" * len(recent_turns_any))
+            cursor = conn.execute(
+                f"""
+                SELECT 
+                    dish_name,
+                    COUNT(*) as order_count,
+                    ROUND(AVG(price), 2) as avg_price
+                FROM meals
+                WHERE dish_name IS NOT NULL AND dish_name != '' AND turn_id IN ({placeholders})
+                GROUP BY dish_name
+                """,
+                recent_turns_any,
+            )
+            for row in cursor.fetchall():
+                dish_sales[row["dish_name"]] = {
+                    "order_count": row["order_count"],
+                    "avg_price": row["avg_price"],
+                }
+        
+        results = []
+        default_price = 15.0
+        
+        for recipe in recipes:
+            name = recipe.get("name", "")
+            if not name:
+                continue
+            
+            ingredients = recipe.get("ingredients", [])
+            if isinstance(ingredients, dict):
+                ingredients = [{"name": k, "quantity": v} for k, v in ingredients.items()]
+            
+            total_cost = 0.0
+            total_competition = 0.0
+            ing_count = 0
+            
+            for ing in ingredients:
+                ing_name = ing.get("name", "")
+                qty = ing.get("quantity", 1)
+                if ing_name:
+                    price = ingredient_prices.get(ing_name, default_price)
+                    total_cost += price * qty
+                    total_competition += ingredient_competition.get(ing_name, 50)
+                    ing_count += 1
+            
+            avg_competition = total_competition / ing_count if ing_count > 0 else 50
+            
+            sales_info = dish_sales.get(name, {})
+            order_count = sales_info.get("order_count", 0)
+            avg_selling_price = sales_info.get("avg_price")
+            
+            if avg_selling_price is None:
+                prestige = recipe.get("prestige", 10)
+                avg_selling_price = round(total_cost * 1.3 + prestige * 2, 2)
+            
+            margin = round(avg_selling_price - total_cost, 2)
+            margin_pct = round((margin / total_cost * 100) if total_cost > 0 else 0, 1)
+            
+            popularity_bonus = min(30, order_count * 3)
+            margin_score = min(40, max(0, margin_pct))
+            competition_penalty = avg_competition * 0.3
+            
+            profitability_score = round(
+                popularity_bonus + margin_score - competition_penalty + 30,
+                1
+            )
+            profitability_score = max(0, min(100, profitability_score))
+            
+            results.append({
+                "dish_name": name,
+                "avg_selling_price": avg_selling_price,
+                "estimated_ingredient_cost": round(total_cost, 2),
+                "estimated_margin": margin,
+                "margin_percent": margin_pct,
+                "order_count": order_count,
+                "prestige": recipe.get("prestige", 0),
+                "ingredient_competition_avg": round(avg_competition, 1),
+                "profitability_score": profitability_score,
+            })
+        
+        results.sort(key=lambda x: x["profitability_score"], reverse=True)
+        return results
+    finally:
+        conn.close()
+
+
+def get_strategic_dish_ranking(db_path: str | Path, recipes: list[dict], window_size: int = DEFAULT_WINDOW_SIZE) -> list[dict[str, Any]]:
+    """Get a strategic ranking of dishes optimized for menu selection.
+    
+    Combines profitability, competition, and demand into a single ranking.
+    Also identifies "ingredient synergies" - dishes that share ingredients.
+    
+    Returns top dishes with strategic recommendations.
+    """
+    profitability = get_dish_profitability_analysis(db_path, recipes, window_size)
+    
+    all_ingredients: dict[str, list[str]] = {}
+    for recipe in recipes:
+        name = recipe.get("name", "")
+        ingredients = recipe.get("ingredients", [])
+        if isinstance(ingredients, dict):
+            ingredients = [{"name": k, "quantity": v} for k, v in ingredients.items()]
+        for ing in ingredients:
+            ing_name = ing.get("name", "")
+            if ing_name:
+                if ing_name not in all_ingredients:
+                    all_ingredients[ing_name] = []
+                all_ingredients[ing_name].append(name)
+    
+    dish_synergies: dict[str, int] = {}
+    for dishes in all_ingredients.values():
+        if len(dishes) > 1:
+            for dish in dishes:
+                dish_synergies[dish] = dish_synergies.get(dish, 0) + len(dishes) - 1
+    
+    for item in profitability:
+        synergy = dish_synergies.get(item["dish_name"], 0)
+        item["ingredient_synergy_score"] = synergy
+        synergy_bonus = min(15, synergy * 2)
+        item["final_score"] = round(item["profitability_score"] + synergy_bonus, 1)
+    
+    profitability.sort(key=lambda x: x["final_score"], reverse=True)
+    return profitability

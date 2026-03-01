@@ -65,7 +65,7 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         return client.call("save_menu", {"items": api_items})
 
     @tool
-    def prepare_dish(dish_name: str) -> str:
+    def prepare_dish(dish_name: str, client_id: str) -> str:
         """Start preparing a dish for a client (serving phase only).
 
         Call this when a client arrives and their order matches a dish on the menu.
@@ -74,11 +74,16 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
 
         Args:
             dish_name (str): Name of the dish to prepare — must match exactly a name on the menu.
+            client_id (str): ID of the client who ordered this dish — required to track who to serve.
 
         Returns:
             Server response confirming preparation started, or an error message.
         """
-        return client.call("prepare_dish", {"dish_name": dish_name})
+        result = client.call("prepare_dish", {"dish_name": dish_name})
+        if state_getter is not None and "error" not in result.lower():
+            state = state_getter()
+            state.dishes_in_preparation[dish_name] = client_id
+        return result
 
     @tool
     def serve_dish(dish_name: str, client_id: str) -> str:
@@ -90,12 +95,16 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
 
         Args:
             dish_name (str): Name of the dish that finished preparation.
-            client_id (str): ID of the client who ordered it — find this in get_pending_clients().
+            client_id (str): ID of the client who ordered it — use get_client_for_dish() to find it.
 
         Returns:
             Server response confirming delivery, or an error message.
         """
-        return client.call("serve_dish", {"dish_name": dish_name, "client_id": client_id})
+        result = client.call("serve_dish", {"dish_name": dish_name, "client_id": client_id})
+        if state_getter is not None and "error" not in result.lower():
+            state = state_getter()
+            state.dishes_in_preparation.pop(dish_name, None)
+        return result
 
     @tool
     def create_market_entry(side: str, ingredient_name: str, quantity: int, price: float) -> str:
@@ -303,6 +312,28 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         return json.dumps(state.pending_clients, ensure_ascii=False)
 
     @tool
+    def get_client_for_dish(dish_name: str) -> str:
+        """Get the client_id for a dish that was prepared.
+
+        Call this when a dish is ready (preparation_complete event) to find out
+        which client ordered it. Returns the client_id that was saved when
+        prepare_dish was called.
+
+        Args:
+            dish_name (str): Name of the dish that finished preparation.
+
+        Returns:
+            The client_id string, or an error message if not found.
+        """
+        if state_getter is None:
+            return json.dumps({"error": "state_getter not configured"})
+        state = state_getter()
+        client_id = state.dishes_in_preparation.get(dish_name)
+        if client_id:
+            return client_id
+        return json.dumps({"error": f"No client found for dish: {dish_name}"})
+
+    @tool
     def get_suggested_bids() -> str:
         """Return the Analyst's recommended bid prices for this turn.
 
@@ -370,7 +401,7 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
 
     @tool
     def calculate_suggested_prices(
-        markup_percent: float = 10.0,
+        markup_percent: float = 20.0,
         fallback_cost_per_unit: float = 15.0,
     ) -> str:
         """Compute estimated costs and suggested selling prices for all draft menu recipes.
@@ -442,6 +473,7 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         delete_market_entry,
         update_restaurant_is_open,
         get_pending_clients,
+        get_client_for_dish,
         send_message,
         get_recipes,
         get_inventory,

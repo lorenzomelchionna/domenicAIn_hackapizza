@@ -203,6 +203,109 @@ def create_analyst_tools(db_path: str | Path, state_getter: Callable | None = No
         except Exception as e:
             return json.dumps({"error": str(e)})
 
+    @tool
+    def get_ingredient_competition(window_size: int = 2) -> str:
+        """Analyze ingredient competition: how contested each ingredient is.
+        
+        Returns JSON with: ingredient, unique_bidders, total_bids, avg_bid, min_bid, max_bid,
+        bid_spread, total_quantity_demanded, competition_score (0-100, higher = harder to win).
+        
+        Use this to identify which ingredients are easy vs hard to acquire.
+        Low competition_score = easy to win, good for menu planning.
+        High competition_score = many competitors want it, bid higher or avoid.
+        
+        Args:
+            window_size: Number of recent turns to analyze (default: 2)
+        """
+        try:
+            data = queries.get_ingredient_competition_analysis(db_path, window_size)
+            return json.dumps(data, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    @tool
+    def get_dish_profitability(recipes_json: str, window_size: int = 2) -> str:
+        """Analyze dish profitability: margin between selling price and ingredient costs.
+        
+        IMPORTANT: Pass the recipes as a JSON string from get_recipes().
+        
+        Returns JSON with for each dish:
+        - dish_name, avg_selling_price, estimated_ingredient_cost
+        - estimated_margin, margin_percent
+        - order_count (popularity), prestige
+        - ingredient_competition_avg (how hard to get ingredients)
+        - profitability_score (0-100, higher = better to put on menu)
+        
+        Use this to find dishes with HIGH margin and LOW ingredient competition.
+        
+        Args:
+            recipes_json: JSON string of recipes (from get_recipes())
+            window_size: Number of recent turns to analyze (default: 2)
+        """
+        try:
+            recipes = json.loads(recipes_json)
+            data = queries.get_dish_profitability_analysis(db_path, recipes, window_size)
+            return json.dumps(data, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    @tool
+    def get_strategic_dish_ranking(recipes_json: str, window_size: int = 2) -> str:
+        """Get strategic ranking of dishes for optimal menu selection.
+        
+        IMPORTANT: Pass the recipes as a JSON string from get_recipes().
+        
+        Combines profitability, competition, demand, AND ingredient synergies.
+        Dishes that share ingredients with other good dishes get bonus points
+        (more efficient bidding at auction).
+        
+        Returns JSON sorted by final_score (highest = best menu candidates):
+        - All fields from get_dish_profitability
+        - ingredient_synergy_score: how many other dishes share ingredients
+        - final_score: composite score including synergy bonus
+        
+        Use this to select the TOP 10 dishes for your draft menu.
+        
+        Args:
+            recipes_json: JSON string of recipes (from get_recipes())
+            window_size: Number of recent turns to analyze (default: 2)
+        """
+        try:
+            recipes = json.loads(recipes_json)
+            data = queries.get_strategic_dish_ranking(db_path, recipes, window_size)
+            return json.dumps(data, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    @tool
+    def get_menu_popularity(window_size: int = 2) -> str:
+        """Get dish popularity based on competitor menus - which dishes other restaurants offer.
+        
+        Analyzes what dishes appear on other restaurants' menus. If many restaurants
+        offer the same dish, it's likely popular with customers (high demand signal).
+        
+        Returns JSON sorted by restaurant_count (most popular first):
+        - dish_name: name of the dish
+        - restaurant_count: how many restaurants have it on their menu
+        - avg_price: average price across all menus
+        - min_price: lowest price seen
+        - max_price: highest price seen
+        - restaurants: list of restaurant names offering this dish
+        
+        Use this to:
+        - Identify trending dishes that customers want
+        - See competitor pricing for the same dish
+        - Find underserved niches (dishes few competitors offer)
+        
+        Args:
+            window_size: Number of recent turns to analyze (default: 2)
+        """
+        try:
+            data = queries.get_menu_popularity(db_path, window_size)
+            return json.dumps(data, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
     all_tools = [
         get_bid_statistics,
         get_winning_bid_statistics,
@@ -213,6 +316,10 @@ def create_analyst_tools(db_path: str | Path, state_getter: Callable | None = No
         get_recommended_price,
         get_available_turns,
         get_turn_data_summary,
+        get_ingredient_competition,
+        get_dish_profitability,
+        get_strategic_dish_ranking,
+        get_menu_popularity,
     ]
     by_name = {t.__name__: t for t in all_tools}
     return all_tools, by_name

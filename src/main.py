@@ -42,6 +42,9 @@ async def main() -> None:
 
     restaurant_manager, sub_agents = create_all_agents(client, mcp_client, phase_getter, state_getter, db_path=DB_PATH)
     maitre_agent = next(a for a in sub_agents if a.name == "maitre")
+    auction_broker_agent = next((a for a in sub_agents if a.name == "auction_broker"), None)
+    menu_decider_pre_bid_agent = next((a for a in sub_agents if a.name == "menu_decider_pre_bid"), None)
+    analyst_agent = next((a for a in sub_agents if a.name == "analyst"), None)
 
     event_queue: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue()
     event_log: list[dict[str, Any]] = []
@@ -143,6 +146,83 @@ async def main() -> None:
         except Exception as e:
             log("ERROR", f"data collection failed for phase {phase}: {e}")
         
+        if phase == "closed_bid" and auction_broker_agent is not None:
+            # Ensure draft_menu and suggested_bids are populated before auction_broker
+            if not state.draft_menu and menu_decider_pre_bid_agent is not None:
+                ctx = state.summary()
+                msg = f"Current phase: speaking (pre-bid). Create the draft menu now.\n\nContext:\n{ctx}"
+                try:
+                    if tracer is not None:
+                        with tracer.start_as_current_span("hackapizza.ensure_draft_menu") as span:
+                            span.set_attribute("phase", phase)
+                            menu_decider_pre_bid_agent.run(msg, tool_choice="required")
+                    else:
+                        menu_decider_pre_bid_agent.run(msg, tool_choice="required")
+                    log("AGENT", "menu_decider_pre_bid (ensure draft_menu)")
+                except Exception as e:
+                    log("ERROR", f"menu_decider_pre_bid (ensure draft_menu) failed: {e}")
+            # Fallback: if draft_menu still empty, build from first 5 recipes
+            if not state.draft_menu and state.recipes:
+                fallback_draft = []
+                for r in state.recipes[:5]:
+                    name = r.get("name")
+                    if not name:
+                        continue
+                    ings = r.get("ingredients")
+                    if isinstance(ings, dict):
+                        ing_list = [{"name": k, "quantity": int(v)} for k, v in ings.items()]
+                    elif isinstance(ings, list):
+                        ing_list = [{"name": it.get("name", ""), "quantity": int(it.get("quantity", 0))} for it in ings if it.get("name")]
+                    else:
+                        ing_list = []
+                    fallback_draft.append({"name": name, "ingredients": ing_list})
+                if fallback_draft:
+                    state.draft_menu = fallback_draft
+                    log("AGENT", f"fallback draft_menu from recipes: {[d['name'] for d in fallback_draft]}")
+            if not state.suggested_bids and analyst_agent is not None:
+                ctx = state.summary()
+                msg = f"Current phase: speaking (pre-bid). Analyze ingredients and save suggested bids.\n\nContext:\n{ctx}"
+                try:
+                    if tracer is not None:
+                        with tracer.start_as_current_span("hackapizza.ensure_suggested_bids") as span:
+                            span.set_attribute("phase", phase)
+                            analyst_agent.run(msg, tool_choice="required")
+                    else:
+                        analyst_agent.run(msg, tool_choice="required")
+                    log("AGENT", "analyst (ensure suggested_bids)")
+                except Exception as e:
+                    log("ERROR", f"analyst (ensure suggested_bids) failed: {e}")
+            # Fallback: if suggested_bids still empty, compute defaults from draft_menu (price=10)
+            if not state.suggested_bids and state.draft_menu:
+                ingredients: set[str] = set()
+                for item in state.draft_menu:
+                    ings = item.get("ingredients")
+                    if isinstance(ings, list):
+                        for it in ings:
+                            if isinstance(it, dict) and it.get("name"):
+                                ingredients.add(str(it["name"]))
+                    elif isinstance(ings, dict):
+                        ingredients.update(ings.keys())
+                state.suggested_bids = [(ing, 10.0) for ing in sorted(ingredients)]
+                log("AGENT", f"fallback suggested_bids from draft_menu: {len(state.suggested_bids)} ingredients")
+
+            ctx = state.auction_summary()
+            msg = f"Current phase: closed_bid. Submit auction bids now.\n\nContext:\n{ctx}"
+            try:
+                if tracer is not None:
+                    with tracer.start_as_current_span("hackapizza.phase.closed_bid") as span:
+                        span.set_attribute("phase", phase)
+                        span.set_attribute("turn_id", state.turn_id)
+                        resp = auction_broker_agent.run(msg, tool_choice="required")
+                else:
+                    resp = auction_broker_agent.run(msg, tool_choice="required")
+                log("AGENT", f"auction_broker response: {resp.text[:200] if resp and resp.text else 'ok'}")
+                append_event("AGENT", "auction_broker phase=closed_bid", {"response_preview": (resp.text[:150] if resp and resp.text else "ok")})
+            except Exception as e:
+                log("ERROR", f"auction_broker failed: {e}")
+                append_event("ERROR", f"auction_broker failed: {e}")
+            return
+
         ctx = state.summary()
         msg = f"Current phase: {phase}. Execute phase-specific tasks.\n\nContext:\n{ctx}"
         try:
@@ -167,21 +247,35 @@ async def main() -> None:
         client_name = data.get("clientName", "")
         order_text = data.get("orderText", "")
         intolerances = data.get("intolerances", [])
+        
+        # Find client_id from meals by matching customer.name and request
+        client_id = None
+        for meal in state.meals:
+            if meal.get("executed"):
+                continue
+            customer = meal.get("customer", {})
+            meal_client_name = customer.get("name", "") if isinstance(customer, dict) else ""
+            meal_order_text = meal.get("request", "")
+            if meal_client_name == client_name and meal_order_text == order_text:
+                client_id = str(meal.get("customerId"))
+                break
+        
         msg = (
             f"A new client arrived: {client_name}.\n"
+            f"Client ID: {client_id}\n"
             f"Order: {order_text}\n"
             f"Intolerances: {intolerances}\n\n"
             f"Context:\n{ctx}\n\n"
-            f"Match the order to a menu item. Check intolerances. If valid, call prepare_dish."
+            f"Match the order to a menu item. Check intolerances. If valid, call prepare_dish(dish_name, client_id)."
         )
         try:
             if tracer is not None:
                 with tracer.start_as_current_span("hackapizza.maitre.client_arrival") as span:
                     span.set_attribute("client_name", client_name)
                     span.set_attribute("order_preview", str(order_text)[:200])
-                    maitre_agent.run(msg)
+                    maitre_agent.run(msg, tool_choice="required")
             else:
-                maitre_agent.run(msg)
+                maitre_agent.run(msg, tool_choice="required")
         except Exception as e:
             log("ERROR", f"maitre (client) failed: {e}")
 
@@ -189,19 +283,25 @@ async def main() -> None:
         dish = data.get("dish", "")
         state_updater.refresh_meals(state)
         state_updater.sync_pending_clients(state)
+        
+        # Get client_id from dishes_in_preparation mapping
+        client_id = state.dishes_in_preparation.get(dish)
+        
         ctx = state.maitre_summary()
         msg = (
-            f"Dish ready: {dish}.\n\n"
+            f"Dish ready: {dish}.\n"
+            f"Client ID for this dish: {client_id}\n\n"
             f"Context:\n{ctx}\n\n"
-            f"Find the client_id from the Pending clients list and call serve_dish(dish_name, client_id)."
+            f"Call serve_dish(dish_name='{dish}', client_id='{client_id}') to serve the dish."
         )
         try:
             if tracer is not None:
                 with tracer.start_as_current_span("hackapizza.maitre.serve_dish") as span:
                     span.set_attribute("dish", dish)
-                    maitre_agent.run(msg)
+                    span.set_attribute("client_id", client_id or "unknown")
+                    maitre_agent.run(msg, tool_choice="required")
             else:
-                maitre_agent.run(msg)
+                maitre_agent.run(msg, tool_choice="required")
         except Exception as e:
             log("ERROR", f"maitre (serve) failed: {e}")
 
