@@ -57,6 +57,14 @@ CREATE TABLE IF NOT EXISTS restaurant_snapshots (
     collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Blog posts visti (per rilevare "nuova notizia")
+CREATE TABLE IF NOT EXISTS blog_posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL UNIQUE,
+    first_seen_turn_id INTEGER NOT NULL,
+    collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Eventi SSE ricevuti
 CREATE TABLE IF NOT EXISTS sse_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

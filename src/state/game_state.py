@@ -37,8 +37,6 @@ class GameState:
     # Free-form strategic insight from the blog agent (e.g. "customers want fast cheap food").
     # Set by blog insight agent in speaking phase. None = no insight available.
     blog_insight: str | None = None
-    # Slug of the last blog post we've seen. Used to detect "new news".
-    last_blog_post_slug: str | None = None
     # Draft selection mode: "blog_insight" (Case A) or "top_sold" (Case B).
     draft_selection_mode: str = "blog_insight"
 
