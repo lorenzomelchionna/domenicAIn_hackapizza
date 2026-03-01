@@ -5,6 +5,9 @@ import json
 from typing import TYPE_CHECKING, Any, Callable
 
 from datapizza.tools import tool
+from pydantic import ValidationError
+
+from src.schemas import Recipe, MenuItem, SuggestedBid, AuctionBid, ActualBid
 
 if TYPE_CHECKING:
     from .mcp_client import MCPClient
@@ -18,13 +21,23 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
     def closed_bid(bids: list[dict[str, Any]]) -> str:
         """Submit bids for the ingredient auction. Only available in closed_bid phase.
         Each bid: {ingredient: str, bid: number, quantity: number}"""
-        return client.call("closed_bid", {"bids": bids})
+        try:
+            validated = [AuctionBid(**bid) for bid in bids]
+        except ValidationError as e:
+            return f"Error: invalid bid format - {e}"
+        api_bids = [b.model_dump() for b in validated]
+        return client.call("closed_bid", {"bids": api_bids})
 
     @tool
     def save_menu(items: list[dict[str, Any]]) -> str:
         """Set or update the restaurant menu. Items: [{name: str, price: number}].
         Names must match valid recipe names. Available in speaking, closed_bid, waiting."""
-        return client.call("save_menu", {"items": items})
+        try:
+            validated = [MenuItem(**item) for item in items]
+        except ValidationError as e:
+            return f"Error: invalid menu item format - {e}"
+        api_items = [m.model_dump() for m in validated]
+        return client.call("save_menu", {"items": api_items})
 
     @tool
     def prepare_dish(dish_name: str) -> str:
@@ -88,11 +101,13 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         This does NOT publish the menu to the game server — it only saves the draft locally."""
         if state_getter is None:
             return "Error: state_getter not configured"
-        if not isinstance(items, list):
-            return "Error: items must be a list"
+        try:
+            validated = [Recipe(**item) for item in items]
+        except ValidationError as e:
+            return f"Error: invalid recipe format - {e}"
         state = state_getter()
-        state.draft_menu = items
-        return f"Draft menu saved with {len(items)} recipes: {[r.get('name', '?') for r in items]}"
+        state.draft_menu = [r.model_dump() for r in validated]
+        return f"Draft menu saved with {len(validated)} recipes: {[r.name for r in validated]}"
 
     @tool
     def get_draft_menu() -> str:
@@ -110,18 +125,13 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         The analyst calls this after analyzing the market. The broker will use these for bidding."""
         if state_getter is None:
             return "Error: state_getter not configured"
-        if not isinstance(suggested_bids, list):
-            return "Error: suggested_bids must be a list"
+        try:
+            validated = [SuggestedBid(**bid) for bid in suggested_bids]
+        except ValidationError as e:
+            return f"Error: invalid bid format - {e}"
         state = state_getter()
-        parsed: list[tuple[str, float]] = []
-        for item in suggested_bids:
-            if isinstance(item, dict):
-                ing = item.get("ingredient")
-                price = item.get("price")
-                if ing is not None and price is not None:
-                    parsed.append((str(ing), float(price)))
-        state.suggested_bids = parsed
-        return f"Suggested bids saved for {len(parsed)} ingredients: {[p[0] for p in parsed]}"
+        state.suggested_bids = [(b.ingredient, b.price) for b in validated]
+        return f"Suggested bids saved for {len(validated)} ingredients: {[b.ingredient for b in validated]}"
 
 
     @tool
@@ -139,9 +149,11 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         if state_getter is None:
             return json.dumps({"error": "state_getter not configured"})
         state = state_getter()
-        # Return as list of dicts for JSON
-        data = [{"ingredient": ing, "price": price} for ing, price in state.suggested_bids]
-        return json.dumps(data, ensure_ascii=False)
+        bids = [
+            SuggestedBid(ingredient=ing, price=price).model_dump()
+            for ing, price in state.suggested_bids
+        ]
+        return json.dumps(bids, ensure_ascii=False)
 
     @tool
     def save_actual_bids(actual_bids: list[dict[str, Any]]) -> str:
@@ -150,23 +162,13 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         Call this AFTER closed_bid. Parse the closed_bid response: price = actual paid per unit, success = whether purchase went through."""
         if state_getter is None:
             return "Error: state_getter not configured"
-        if not isinstance(actual_bids, list):
-            return "Error: actual_bids must be a list"
+        try:
+            validated = [ActualBid(**bid) for bid in actual_bids]
+        except ValidationError as e:
+            return f"Error: invalid bid result format - {e}"
         state = state_getter()
-        parsed: list[dict[str, Any]] = []
-        for item in actual_bids:
-            if isinstance(item, dict):
-                ing = item.get("ingredient")
-                price = item.get("price")
-                success = item.get("success")
-                if ing is not None:
-                    parsed.append({
-                        "ingredient": str(ing),
-                        "price": float(price) if price is not None else 0.0,
-                        "success": bool(success) if success is not None else False,
-                    })
-        state.actual_bids = parsed
-        return f"Actual bids saved for {len(parsed)} ingredients: {[p['ingredient'] for p in parsed]}"
+        state.actual_bids = [b.model_dump() for b in validated]
+        return f"Actual bids saved for {len(validated)} ingredients: {[b.ingredient for b in validated]}"
 
     @tool
     def get_actual_bids() -> str:
@@ -174,7 +176,8 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         if state_getter is None:
             return json.dumps({"error": "state_getter not configured"})
         state = state_getter()
-        return json.dumps(state.actual_bids, ensure_ascii=False)
+        bids = [ActualBid(**bid).model_dump() for bid in state.actual_bids]
+        return json.dumps(bids, ensure_ascii=False)
 
     @tool
     def calculate_suggested_prices(

@@ -58,6 +58,18 @@ class GameState:
         ]
         return "\n".join(parts)
 
+    def maitre_summary(self) -> str:
+        """Produce a concise context string for agents."""
+        insight = self.blog_insight or "No blog insight available."
+        parts = [
+            f"Phase: {self.phase}",
+            f"Turn: {self.turn_id}",
+            f"Menu: {self.menu}",
+            f"Pending clients: {self.pending_clients}",
+            f"Prepared dishes: {self.prepared_dishes}",
+        ]
+        return "\n".join(parts)
+
 
 class StateUpdater:
     """Fetches and updates GameState from HTTP endpoints."""
