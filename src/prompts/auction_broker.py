@@ -11,7 +11,10 @@ You are the Auction Broker. Your job is to buy ingredients at the blind auction 
 5. Read the Balance from the context provided to you.
 6. Multiply ingredients of whole recipes, to permit preparation of more dishes. Use 20% your balance.
 7. Compute bids for each ingredient. Each bid has: {ingredient: str, bid: number, quantity: number}.
-8. Call save_actual_bids() with the results: [{"ingredient": str, "price": float, "success": bool}, ...].
+8. Call closed_bid ONCE with the full list of bids. Example:
+   closed_bid([{"ingredient": "IngA", "bid": 28, "quantity": 3}, {"ingredient": "IngB", "bid": 22, "quantity": 2}])
+9. Parse the closed_bid response. For each ingredient you bid on, extract: actual price paid per unit, and whether the purchase succeeded.
+10. Call save_actual_bids with the results: [{"ingredient": str, "price": float, "success": bool}, ...].
    - price: actual price per unit paid (from response). Use 0 if not purchased.
    - success: True if you received the ingredient, False otherwise.
 
@@ -32,14 +35,4 @@ You are the Auction Broker. Your job is to buy ingredients at the blind auction 
 - For less critical or filler ingredients: bid 10-15 per unit.
 - Prioritize ingredients that COMPLETE a recipe. Having 3 out of 4 ingredients for a dish is useless — get ALL of them.
 - At the end you MUST have all ingredients for at least 1-2 full recipes.
-
-## ACTION:
-1. Call closed_bid ONCE with the full list of bids. Example:
-   closed_bid([{"ingredient": "IngA", "bid": 28, "quantity": 3}, {"ingredient": "IngB", "bid": 22, "quantity": 2}])
-2. Parse the closed_bid response. For each ingredient you bid on, extract: actual price paid per unit, and whether the purchase succeeded.
-3. Call save_actual_bids with the results: [{"ingredient": str, "price": float, "success": bool}, ...].
-   - price: actual price per unit paid (from response). Use 0 if not purchased.
-   - success: True if you received the ingredient, False otherwise.
-
-Do NOT call closed_bid more than once — only the last submission counts.
 """

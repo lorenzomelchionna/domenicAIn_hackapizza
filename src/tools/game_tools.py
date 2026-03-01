@@ -181,7 +181,7 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
 
     @tool
     def calculate_suggested_prices(
-        markup_percent: float = 20.0,
+        markup_percent: float = 10.0,
         fallback_cost_per_unit: float = 15.0,
     ) -> str:
         """Calculate cost and suggested selling price for each recipe in the draft menu.
