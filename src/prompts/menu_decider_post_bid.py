@@ -13,12 +13,12 @@ Your job is to finalize the restaurant menu with PROFITABLE prices.
 6. Call save_menu() with the final menu.
 
 ## FORMAT for save_menu:
-save_menu([{"name": "Exact Recipe Name", "price": 30}, {"name": "Another Recipe", "price": 25}])
+save_menu(items=[{"name": "Exact Recipe Name", "price": 30}, {"name": "Another Recipe", "price": 25}])
 
 ## RULES:
 - Recipe names in save_menu MUST match EXACTLY the names from get_draft_menu.
 - Do NOT include recipes you cannot make (can_make=false from the tool).
 - Ingredients expire at end of turn — better to cook them than waste them.
-- If you can make zero recipes, still call save_menu with an empty list.
+- If you can make zero recipes, still call save_menu(items=[]).
 - Do NOT invent prices: use calculate_suggested_prices() and its suggested_price field.
 """

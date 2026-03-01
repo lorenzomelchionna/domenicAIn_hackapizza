@@ -26,7 +26,7 @@ Analyze auction and market data to determine the BEST bid price for each ingredi
    - If no historical data exists, use a default of 10-15 per unit
 
 5. **Save recommendations**: Call save_suggested_bids() with your analysis results.
-   Format: [{"ingredient": "IngredientName", "price": 12.5}, ...]
+   Format: save_suggested_bids(suggested_bids=[{"ingredient": "IngredientName", "price": 12.5}, ...])
 
 ## BIDDING STRATEGY PRINCIPLES:
 
@@ -40,7 +40,7 @@ Analyze auction and market data to determine the BEST bid price for each ingredi
 
 After analysis, call save_suggested_bids with a list of recommendations:
 ```
-save_suggested_bids([
+save_suggested_bids(suggested_bids=[
     {"ingredient": "Flour", "price": 8.5},
     {"ingredient": "Tomato", "price": 12.0},
     {"ingredient": "Cheese", "price": 15.5}

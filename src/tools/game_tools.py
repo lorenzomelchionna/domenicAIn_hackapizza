@@ -18,7 +18,7 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
     client = mcp_client
 
     @tool
-    def closed_bid(bids: list[dict[str, Any]]) -> str:
+    def closed_bid(*, bids: list[dict[str, Any]]) -> str:
         """Submit bids for the ingredient auction. Only available in closed_bid phase.
         Each bid: {ingredient: str, bid: number, quantity: number}"""
         try:
@@ -29,7 +29,7 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         return client.call("closed_bid", {"bids": api_bids})
 
     @tool
-    def save_menu(items: list[dict[str, Any]]) -> str:
+    def save_menu(*, items: list[dict[str, Any]]) -> str:
         """Set or update the restaurant menu. Items: [{name: str, price: number}].
         Names must match valid recipe names. Available in speaking, closed_bid, waiting."""
         try:
@@ -95,7 +95,7 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         return json.dumps(state.inventory, ensure_ascii=False)
 
     @tool
-    def save_draft_menu(items: list[dict[str, Any]]) -> str:
+    def save_draft_menu(*, items: list[dict[str, Any]]) -> str:
         """Save the draft menu (selected recipes for this turn) to shared state.
         Items is a list of recipe objects: [{name: str, ingredients: [{name: str, quantity: int}]}].
         This does NOT publish the menu to the game server — it only saves the draft locally."""
@@ -119,7 +119,7 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         return json.dumps(state.draft_menu, ensure_ascii=False)
 
     @tool
-    def save_suggested_bids(suggested_bids: list[dict[str, Any]]) -> str:
+    def save_suggested_bids(*, suggested_bids: list[dict[str, Any]]) -> str:
         """Save analyst output: suggested bid per unit for each ingredient.
         Input: [{\"ingredient\": str, \"price\": float}, ...].
         The analyst calls this after analyzing the market. The broker will use these for bidding."""
@@ -156,7 +156,7 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         return json.dumps(bids, ensure_ascii=False)
 
     @tool
-    def save_actual_bids(actual_bids: list[dict[str, Any]]) -> str:
+    def save_actual_bids(*, actual_bids: list[dict[str, Any]]) -> str:
         """Save auction results: actual prices and success status per ingredient.
         Input: [{\"ingredient\": str, \"price\": float}, ...].
         Call this AFTER closed_bid. Parse the closed_bid response: price = actual paid per unit, success = whether purchase went through."""
