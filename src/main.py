@@ -148,7 +148,7 @@ async def main() -> None:
         state_updater.refresh_restaurant(state)  # refresh inventory
         state_updater.refresh_meals(state)
         state_updater.sync_pending_clients(state)
-        ctx = state.summary()
+        ctx = state.maitre_summary()
         client_name = data.get("clientName", "")
         order_text = data.get("orderText", "")
         intolerances = data.get("intolerances", [])
@@ -174,7 +174,7 @@ async def main() -> None:
         dish = data.get("dish", "")
         state_updater.refresh_meals(state)
         state_updater.sync_pending_clients(state)
-        ctx = state.summary()
+        ctx = state.maitre_summary()
         msg = (
             f"Dish ready: {dish}.\n\n"
             f"Context:\n{ctx}\n\n"
