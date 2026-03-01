@@ -241,6 +241,54 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         state = state_getter()
         return json.dumps(state.actual_bids, ensure_ascii=False)
 
+    @tool
+    def calculate_suggested_prices(
+        markup_percent: float = 20.0,
+        fallback_cost_per_unit: float = 15.0,
+    ) -> str:
+        """Calculate cost and suggested selling price for each recipe in the draft menu.
+        Uses actual_bids for ingredient prices when available, else fallback_cost_per_unit.
+        Applies markup_percent above cost. Also checks if we have enough inventory to make each dish.
+        Returns JSON: [{name, estimated_cost, suggested_price, can_make}, ...].
+        Use this to set profitable prices before calling save_menu."""
+        if state_getter is None:
+            return json.dumps({"error": "state_getter not configured"})
+        state = state_getter()
+
+        price_map: dict[str, float] = {}
+        for bid in state.actual_bids:
+            if isinstance(bid, dict) and bid.get("ingredient"):
+                price_map[str(bid["ingredient"])] = float(bid.get("price", 0) or 0)
+
+        def _price_for(ingredient: str) -> float:
+            return price_map.get(ingredient, fallback_cost_per_unit)
+
+        def _ingredients_from_recipe(recipe: dict) -> list[tuple[str, int]]:
+            ing = recipe.get("ingredients")
+            if isinstance(ing, list):
+                return [(it.get("name", ""), int(it.get("quantity", 0))) for it in ing if it.get("name")]
+            if isinstance(ing, dict):
+                return [(k, int(v)) for k, v in ing.items()]
+            return []
+
+        result = []
+        for item in state.draft_menu:
+            name = item.get("name", "")
+            if not name:
+                continue
+            pairs = _ingredients_from_recipe(item)
+            cost = sum(qty * _price_for(ing) for ing, qty in pairs)
+            suggested = round(cost * (1 + markup_percent / 100))
+            can_make = all(state.inventory.get(ing, 0) >= qty for ing, qty in pairs)
+            result.append({
+                "name": name,
+                "estimated_cost": round(cost, 2),
+                "suggested_price": suggested,
+                "can_make": can_make,
+            })
+
+        return json.dumps(result, ensure_ascii=False)
+
     all_tools = [
         closed_bid,
         save_menu,
@@ -264,6 +312,7 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
         get_suggested_bids,
         save_actual_bids,
         get_actual_bids,
+        calculate_suggested_prices,
     ]
     by_name = {t.__name__: t for t in all_tools}
     return all_tools, by_name
