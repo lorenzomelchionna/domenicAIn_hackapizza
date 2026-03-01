@@ -29,7 +29,7 @@ WORKFLOW:
       "prestige_min": 38,
       "prestige_max": 72
     }
-3. From the returned recipes, select exactly the 4 recipes with lower preparation time (within the archetype's prep_time range).
+3. From the returned recipes, select 10 recipes.
 4. Save list of selected recipes in a draft_menu using save_draft_menu([{"name": string, "ingredients": [{"name": string, "quantity": int}]}]).
 
 ## EXAMPLE from recipe to save_draft_menu:

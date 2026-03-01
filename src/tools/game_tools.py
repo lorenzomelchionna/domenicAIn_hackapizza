@@ -80,7 +80,7 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
                 
                 filtered_recipes.append(recipe)
                 
-                if len(filtered_recipes) == 20:
+                if len(filtered_recipes) == 40:
                     break
 
         return json.dumps(filtered_recipes, ensure_ascii=False)
