@@ -4,7 +4,7 @@ Runs the Cronache del Cosmo blog agent to identify target customer archetype
 from market signals. Used at the start of each speaking phase.
 """
 import re
-from typing import Optional
+from typing import Any, Optional
 
 import requests
 from datapizza.agents import Agent

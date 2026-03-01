@@ -7,6 +7,32 @@ from .db import get_connection
 DEFAULT_WINDOW_SIZE = 2
 
 
+def blog_post_exists(db_path: str | Path, slug: str) -> bool:
+    """Check if a blog post slug has already been seen (recorded in DB)."""
+    conn = get_connection(db_path)
+    try:
+        cursor = conn.execute(
+            "SELECT 1 FROM blog_posts WHERE slug = ? LIMIT 1",
+            (slug,),
+        )
+        return cursor.fetchone() is not None
+    finally:
+        conn.close()
+
+
+def record_blog_post(db_path: str | Path, slug: str, turn_id: int) -> None:
+    """Record a blog post as seen for the first time at the given turn."""
+    conn = get_connection(db_path)
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO blog_posts (slug, first_seen_turn_id) VALUES (?, ?)",
+            (slug, turn_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _get_recent_turns(conn, window_size: int = DEFAULT_WINDOW_SIZE) -> list[int]:
     """Get the most recent N turn IDs with bid_history data."""
     cursor = conn.execute(
