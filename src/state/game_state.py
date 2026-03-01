@@ -42,13 +42,13 @@ class GameState:
         """Produce a concise context string for agents."""
         from src.config import DEFAULT_ARCHETYPE
 
-        archetype = self.target_archetype or DEFAULT_ARCHETYPE
+        #archetype = self.target_archetype or DEFAULT_ARCHETYPE
         sentiment = self.blog_sentiment or "default"
         parts = [
             f"Phase: {self.phase}",
             f"Turn: {self.turn_id}",
             f"Blog sentiment: {sentiment}",
-            f"Target archetype: {archetype}",
+            #f"Target archetype: {archetype}",
             f"Balance: {self.balance}",
             f"Reputation: {self.reputation}",
             f"Inventory: {self.inventory}",

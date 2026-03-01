@@ -6,7 +6,7 @@ At the start of the speaking phase, open the restaurant.
 
 Phase routing:
 - **speaking**: Two-step process:
-  1. First, call menu_decider_pre_bid. Pass the full context. The target archetype is in Context as "Target archetype: X" — use that value. It will analyze recipes and save a draft menu.
+  1. First, call menu_decider_pre_bid. Pass the full context. It will analyze recipes and save a draft menu.
   2. Then, call analyst. Pass the context. It will analyze market data and save suggested bid prices for the auction_broker.
 - **closed_bid**: Call auction_broker. Pass the full context (it includes the draft menu and balance). It will use analyst's suggested bids to submit competitive bids for ingredients.
 - **waiting**: Call menu_decider_post_bid. Pass the full context. It will finalize menu and prices.
