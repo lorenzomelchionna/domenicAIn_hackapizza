@@ -42,6 +42,7 @@ async def main() -> None:
 
     restaurant_manager, sub_agents = create_all_agents(client, mcp_client, phase_getter, state_getter, db_path=DB_PATH)
     maitre_agent = next(a for a in sub_agents if a.name == "maitre")
+    auction_broker_agent = next((a for a in sub_agents if a.name == "auction_broker"), None)
 
     event_queue: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue()
     event_log: list[dict[str, Any]] = []
@@ -143,6 +144,24 @@ async def main() -> None:
         except Exception as e:
             log("ERROR", f"data collection failed for phase {phase}: {e}")
         
+        if phase == "closed_bid" and auction_broker_agent is not None:
+            ctx = state.auction_summary()
+            msg = f"Current phase: closed_bid. Submit auction bids now.\n\nContext:\n{ctx}"
+            try:
+                if tracer is not None:
+                    with tracer.start_as_current_span("hackapizza.phase.closed_bid") as span:
+                        span.set_attribute("phase", phase)
+                        span.set_attribute("turn_id", state.turn_id)
+                        resp = auction_broker_agent.run(msg)
+                else:
+                    resp = auction_broker_agent.run(msg)
+                log("AGENT", f"auction_broker response: {resp.text[:200] if resp and resp.text else 'ok'}")
+                append_event("AGENT", "auction_broker phase=closed_bid", {"response_preview": (resp.text[:150] if resp and resp.text else "ok")})
+            except Exception as e:
+                log("ERROR", f"auction_broker failed: {e}")
+                append_event("ERROR", f"auction_broker failed: {e}")
+            return
+
         ctx = state.summary()
         msg = f"Current phase: {phase}. Execute phase-specific tasks.\n\nContext:\n{ctx}"
         try:
