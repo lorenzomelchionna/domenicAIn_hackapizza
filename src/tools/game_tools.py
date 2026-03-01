@@ -158,7 +158,7 @@ def create_game_tools(mcp_client: MCPClient, state_getter: Callable | None = Non
     @tool
     def save_actual_bids(actual_bids: list[dict[str, Any]]) -> str:
         """Save auction results: actual prices and success status per ingredient.
-        Input: [{\"ingredient\": str, \"price\": float, \"success\": bool}, ...].
+        Input: [{\"ingredient\": str, \"price\": float}, ...].
         Call this AFTER closed_bid. Parse the closed_bid response: price = actual paid per unit, success = whether purchase went through."""
         if state_getter is None:
             return "Error: state_getter not configured"
