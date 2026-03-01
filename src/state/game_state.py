@@ -30,12 +30,19 @@ class GameState:
     # Broker output: actual auction results. [{ingredient, price, success}, ...]
     # Populated by the broker after closed_bid. Price = actual paid per unit; success = whether purchase went through.
     actual_bids: list[dict[str, Any]] = field(default_factory=list)
+    # Target archetype from blog (Esploratore_Galattico, Astrobarone, Saggi_del_Cosmo, Famiglie_Orbitali).
+    # Set by blog agent in speaking phase. None = use default (Astrobarone).
+    target_archetype: str | None = None
 
     def summary(self) -> str:
         """Produce a concise context string for agents."""
+        from src.config import DEFAULT_ARCHETYPE
+
+        archetype = self.target_archetype or DEFAULT_ARCHETYPE
         parts = [
             f"Phase: {self.phase}",
             f"Turn: {self.turn_id}",
+            f"Target archetype: {archetype}",
             f"Balance: {self.balance}",
             f"Reputation: {self.reputation}",
             f"Inventory: {self.inventory}",

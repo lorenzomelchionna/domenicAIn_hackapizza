@@ -5,6 +5,7 @@ from typing import Any
 
 from datapizza.clients.openai_like import OpenAILikeClient
 
+from src.blog_archetype import run_archetype_agent
 from src.config import BASE_URL, DB_PATH, REGOLO_API_KEY, REGOLO_BASE_URL, REGOLO_MODEL, TEAM_API_KEY, TEAM_ID, validate_config
 from src.logging_config import setup_loggers
 from src.monitor_state import write_monitor_state
@@ -80,7 +81,19 @@ async def main() -> None:
             log("DATA", f"collected initial data for turn {state.turn_id}")
         except Exception as e:
             log("ERROR", f"data collection failed: {e}")
-        # 4. Run orchestrator for speaking/pre-bid
+        # 4. Run blog archetype agent to identify target (or keep default)
+        try:
+            archetype, _ = run_archetype_agent(post_index=0)
+            if archetype:
+                state.target_archetype = archetype
+                log("ARCHETYPE", f"identified target: {archetype}")
+            else:
+                state.target_archetype = None
+                log("ARCHETYPE", "no archetype identified, using default")
+        except Exception as e:
+            log("ERROR", f"archetype agent failed: {e}")
+            state.target_archetype = None
+        # 5. Run orchestrator for speaking/pre-bid
         ctx = state.summary()
         msg = f"Current phase: speaking. Execute phase-specific tasks.\n\nContext:\n{ctx}"
         try:
