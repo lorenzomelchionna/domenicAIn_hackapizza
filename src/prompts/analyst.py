@@ -70,7 +70,7 @@ For ingredients we need, determine bid prices that WIN auctions without overpayi
    - If total_bids < 5: add 20% (rare ingredient, bid higher)
    - If unique_bidders > 4: add 15% (many competitors want it)
 
-8. **Save bid recommendations**: Call save_suggested_bids() with the calculated prices.
+8. **ALWAYS CATEGORICAL Save bid recommendations**: Call save_suggested_bids() with the calculated prices.
 
 ---
 
