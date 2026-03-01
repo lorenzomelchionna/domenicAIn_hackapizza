@@ -13,5 +13,6 @@ def create_restaurant_manager(client, sub_agents: list, tools: list) -> Agent:
         stateless=False,
         tools=tools,
     )
+    sub_agents = [a for a in sub_agents if a.name != "maitre"]
     agent.can_call(sub_agents)
     return agent

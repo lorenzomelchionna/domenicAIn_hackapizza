@@ -3,6 +3,7 @@ from .collector import DataCollector
 from .db import get_connection, init_db
 from .queries import (
     DEFAULT_WINDOW_SIZE,
+    blog_post_exists,
     get_all_turns,
     get_avg_bid_by_ingredient,
     get_competitor_balance_trend,
@@ -14,12 +15,15 @@ from .queries import (
     get_recommended_bid_price,
     get_turn_summary,
     get_winning_bid_stats,
+    record_blog_post,
 )
 
 __all__ = [
     "DataCollector",
+    "blog_post_exists",
     "init_db",
     "get_connection",
+    "record_blog_post",
     "DEFAULT_WINDOW_SIZE",
     "get_avg_bid_by_ingredient",
     "get_winning_bid_stats",

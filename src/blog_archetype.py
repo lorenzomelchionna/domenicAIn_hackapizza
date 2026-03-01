@@ -4,7 +4,7 @@ Runs the Cronache del Cosmo blog agent to identify target customer archetype
 from market signals. Used at the start of each speaking phase.
 """
 import re
-from typing import Optional
+from typing import Any, Optional
 
 import requests
 from datapizza.agents import Agent
@@ -23,6 +23,22 @@ ARCHETYPE_MAP = {
 }
 
 DEFAULT_ARCHETYPE = "Astrobarone"
+
+
+def get_latest_post_slug() -> str | None:
+    """Return the slug of the most recent blog post, or None if unavailable."""
+    try:
+        resp = requests.get(f"{BLOG_URL}/", timeout=15)
+        resp.raise_for_status()
+        html = resp.text
+        seen = set()
+        for m in re.finditer(r'href="/([a-z0-9-]+/)"', html):
+            slug = m.group(1)
+            if slug not in ("tag/", "page/", "rss/", "webmentions/") and slug not in seen:
+                return slug
+        return None
+    except Exception:
+        return None
 
 
 def _scrape_post(index: int = 0) -> str:

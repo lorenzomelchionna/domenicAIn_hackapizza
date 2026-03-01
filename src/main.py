@@ -5,7 +5,8 @@ from typing import Any
 
 from datapizza.clients.openai_like import OpenAILikeClient
 
-from src.blog_archetype import run_archetype_agent
+from src.blog_archetype import get_latest_post_slug
+from src.blog_sentiment import run_blog_insight_agent
 from src.config import BASE_URL, DB_PATH, REGOLO_API_KEY, REGOLO_BASE_URL, REGOLO_MODEL, TEAM_API_KEY, TEAM_ID, validate_config
 from src.logging_config import setup_loggers
 from src.monitor_state import write_monitor_state
@@ -14,7 +15,7 @@ from src.state import GameState, StateUpdater
 from src.sse import listen, log
 from src.tools import MCPClient
 from src.agents import create_all_agents
-from src.data_collector import DataCollector
+from src.data_collector import DataCollector, blog_post_exists, record_blog_post
 
 
 async def main() -> None:
@@ -81,18 +82,28 @@ async def main() -> None:
             log("DATA", f"collected initial data for turn {state.turn_id}")
         except Exception as e:
             log("ERROR", f"data collection failed: {e}")
-        # 4. Run blog archetype agent to identify target (or keep default)
-        try:
-            archetype, _ = run_archetype_agent(post_index=0)
-            if archetype:
-                state.target_archetype = archetype
-                log("ARCHETYPE", f"identified target: {archetype}")
-            else:
-                state.target_archetype = None
-                log("ARCHETYPE", "no archetype identified, using default")
-        except Exception as e:
-            log("ERROR", f"archetype agent failed: {e}")
-            state.target_archetype = None
+        # 4. Determine draft selection mode: Case A (first turn or new news) vs Case B (top sold)
+        current_slug = get_latest_post_slug()
+        is_first_turn = state.turn_id <= 1
+        has_db = bool(DB_PATH)
+        is_new_news = False
+        if has_db and current_slug:
+            is_new_news = not blog_post_exists(DB_PATH, current_slug)
+        if is_first_turn or is_new_news or not has_db:
+            state.draft_selection_mode = "blog_insight"
+            if has_db and current_slug and is_new_news:
+                record_blog_post(DB_PATH, current_slug, state.turn_id)
+            try:
+                insight = run_blog_insight_agent(post_index=0)
+                state.blog_insight = insight or None
+                log("BLOG", f"draft=blog_insight, insight: {(state.blog_insight or '')[:80]}")
+            except Exception as e:
+                log("ERROR", f"blog insight agent failed: {e}")
+                state.blog_insight = None
+        else:
+            state.draft_selection_mode = "top_sold"
+            state.blog_insight = None
+            log("BLOG", "draft=top_sold (10 most sold from previous turn)")
         # 5. Run orchestrator for speaking/pre-bid
         ctx = state.summary()
         msg = f"Current phase: speaking. Execute phase-specific tasks.\n\nContext:\n{ctx}"
@@ -152,7 +163,7 @@ async def main() -> None:
         state_updater.refresh_restaurant(state)  # refresh inventory
         state_updater.refresh_meals(state)
         state_updater.sync_pending_clients(state)
-        ctx = state.summary()
+        ctx = state.maitre_summary()
         client_name = data.get("clientName", "")
         order_text = data.get("orderText", "")
         intolerances = data.get("intolerances", [])
@@ -178,7 +189,7 @@ async def main() -> None:
         dish = data.get("dish", "")
         state_updater.refresh_meals(state)
         state_updater.sync_pending_clients(state)
-        ctx = state.summary()
+        ctx = state.maitre_summary()
         msg = (
             f"Dish ready: {dish}.\n\n"
             f"Context:\n{ctx}\n\n"

@@ -32,17 +32,22 @@ class GameState:
     actual_bids: list[dict[str, Any]] = field(default_factory=list)
     # Target archetype from blog (Esploratore_Galattico, Astrobarone, Saggi_del_Cosmo, Famiglie_Orbitali).
     # Set by blog agent in speaking phase. None = use default (Astrobarone).
+    # DEPRECATED: kept for backward compat; prefer blog_insight.
     target_archetype: str | None = None
+    # Free-form strategic insight from the blog agent (e.g. "customers want fast cheap food").
+    # Set by blog insight agent in speaking phase. None = no insight available.
+    blog_insight: str | None = None
+    # Draft selection mode: "blog_insight" (Case A) or "top_sold" (Case B).
+    draft_selection_mode: str = "blog_insight"
 
     def summary(self) -> str:
         """Produce a concise context string for agents."""
-        from src.config import DEFAULT_ARCHETYPE
-
-        archetype = self.target_archetype or DEFAULT_ARCHETYPE
+        insight = self.blog_insight or "No blog insight available."
         parts = [
             f"Phase: {self.phase}",
             f"Turn: {self.turn_id}",
-            f"Target archetype: {archetype}",
+            f"Draft selection mode: {self.draft_selection_mode}",
+            f"Blog insight: {insight}",
             f"Balance: {self.balance}",
             f"Reputation: {self.reputation}",
             f"Inventory: {self.inventory}",
@@ -51,6 +56,18 @@ class GameState:
             #f"Recipes: {self.recipes}",
             f"Suggested bids (ingredient -> price/unit): {dict(self.suggested_bids) if self.suggested_bids else 'none'}",
             f"Actual bids (auction results): {self.actual_bids if self.actual_bids else 'none'}",
+            f"Pending clients: {self.pending_clients}",
+            f"Prepared dishes: {self.prepared_dishes}",
+        ]
+        return "\n".join(parts)
+
+    def maitre_summary(self) -> str:
+        """Produce a concise context string for agents."""
+        insight = self.blog_insight or "No blog insight available."
+        parts = [
+            f"Phase: {self.phase}",
+            f"Turn: {self.turn_id}",
+            f"Menu: {self.menu}",
             f"Pending clients: {self.pending_clients}",
             f"Prepared dishes: {self.prepared_dishes}",
         ]
