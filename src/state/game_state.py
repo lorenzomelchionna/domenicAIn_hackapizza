@@ -124,12 +124,18 @@ class StateUpdater:
         for m in state.meals:
             if m.get("executed"):
                 continue
-            cid = str(m.get("customerId"))
+            cid = str(m.get("customerId") or m.get("customer_id", ""))
+            customer = m.get("customer", {})
+            client_name = (
+                customer.get("name", "") if isinstance(customer, dict)
+                else m.get("clientName") or m.get("client_name", "")
+            )
+            order_text = m.get("request") or m.get("orderText") or m.get("order_text", "")
             pending.append(
                 {
                     "client_id": cid,
-                    "clientName": m.get("clientName", ""),
-                    "orderText": m.get("orderText", ""),
+                    "clientName": client_name,
+                    "orderText": order_text,
                 }
             )
         state.pending_clients = pending
