@@ -74,6 +74,17 @@ class GameState:
         ]
         return "\n".join(parts)
 
+    def auction_summary(self) -> str:
+        """Minimal context for closed-bid auction decisions."""
+        parts = [
+            f"Phase: {self.phase}",
+            f"Turn: {self.turn_id}",
+            f"Balance: {self.balance}",
+            f"Draft menu: {self.draft_menu}",
+            f"Suggested bids (ingredient -> price/unit): {dict(self.suggested_bids) if self.suggested_bids else 'none'}",
+        ]
+        return "\n".join(parts)
+
 
 class StateUpdater:
     """Fetches and updates GameState from HTTP endpoints."""
