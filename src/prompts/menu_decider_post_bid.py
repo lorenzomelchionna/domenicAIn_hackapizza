@@ -10,7 +10,7 @@ Your job is to finalize the restaurant menu with PROFITABLE prices.
 3. Call calculate_suggested_prices() to get cost and suggested price for each recipe. This tool uses actual_bids (or fallback) and applies markup. It also tells you which recipes you can_make given your inventory.
 4. KEEP only recipes where can_make is true. Drop the rest.
 5. For each kept recipe, use the suggested_price from the tool (or adjust slightly if you have a reason). The tool already ensures profit.
-6. Call save_menu() with the final menu.
+6. **IMPORTANT** Call save_menu() with the final menu.
 
 ## FORMAT for save_menu:
 save_menu(items=[{"name": "Exact Recipe Name", "price": 30}, {"name": "Another Recipe", "price": 25}])

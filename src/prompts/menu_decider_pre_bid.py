@@ -8,13 +8,13 @@ The context includes "Draft selection mode" which determines your strategy:
 First turn of the run OR a new blog post was detected.
 1. Read "Blog insight" from the context.
 2. Call get_recipes() to get the full recipe catalogue.
-3. Select exactly 10 recipes COHERENT with the blog insight (e.g. fast prep if insight says hurry, high prestige if premium clientele, few ingredients if budget).
+3. Select exactly 7 recipes COHERENT with the blog insight (e.g. fast prep if insight says hurry, high prestige if premium clientele, few ingredients if budget).
 4. Save with save_draft_menu(items=[{"name": string, "ingredients": [{"name": string, "quantity": int}]}]).
 
 ## CASE B — Draft selection mode: top_sold
 All other turns: use historical sales data.
 1. Call get_dish_popularity_stats(window_size=1) to get dishes from the previous turn, ordered by order_count DESC.
-2. Take the top 10 dish names.
+2. Take the top 5 dish names.
 3. Call get_recipes() to get full recipe objects.
 4. Map each dish name to its recipe (match by name). If a dish from popularity is not in recipes, skip it and take the next.
 5. Save with save_draft_menu(items=[{"name": string, "ingredients": [{"name": string, "quantity": int}]}]).
